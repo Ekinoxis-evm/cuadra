@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+/* CUADRA · tokens
+   petrol:   #101715  fondo — verde-negro profundo, caña al anochecer
+   bone:     #EDE6D6  texto — hueso cálido
+   solar:    #FF7A45  acento — atardecer caleño, un solo uso por vista
+   alza:     #7BC950  deltas positivos / yield
+   muted:    #5C6B64  metadata, bordes
+*/
+:root {
+  --petrol: #101715;
+  --petrol-2: #17211e;
+  --bone: #ede6d6;
+  --solar: #ff7a45;
+  --alza: #7bc950;
+  --muted: #5c6b64;
+}
+
+body {
+  background: var(--petrol);
+  color: var(--bone);
+  font-family: "Space Grotesk", system-ui, sans-serif;
+}
+
+.mono {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.rule { border-color: color-mix(in srgb, var(--muted) 35%, transparent); }
+
+::selection { background: var(--solar); color: var(--petrol); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
