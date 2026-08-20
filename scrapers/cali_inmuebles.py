@@ -27,6 +27,16 @@ OPS = ["arriendo", "venta"]
 # Rangos de sanidad de precio (COP) para descartar basura
 SANITY = {"arriendo": (300_000, 60_000_000), "venta": (60_000_000, 15_000_000_000)}
 
+# Campos que solo existen en la pagina de detalle (un fetch extra por listing)
+DETAIL_COLS = [
+    ("lat", "REAL"), ("lng", "REAL"), ("estrato", "INTEGER"),
+    ("comuna", "TEXT"), ("direccion", "TEXT"), ("descripcion", "TEXT"),
+    ("amenidades", "TEXT"), ("parqueaderos", "INTEGER"), ("piso", "INTEGER"),
+    ("antiguedad", "TEXT"), ("estado", "TEXT"), ("publicado", "TEXT"),
+    ("owner_nombre", "TEXT"), ("owner_tipo", "TEXT"), ("imagen", "TEXT"),
+    ("detail_at", "TEXT"),
+]
+
 # Mercado Libre: MCO1459 = Inmuebles. Filtramos operación por atributo en cada resultado.
 MELI_URL = ("https://api.mercadolibre.com/sites/MCO/search"
             "?category=MCO1459&q={q}%20cali&limit=50&offset={offset}")
@@ -47,6 +57,12 @@ def db():
             first_seen TEXT, last_seen TEXT, active INTEGER DEFAULT 1,
             PRIMARY KEY (source, source_id)
         )""")
+    # Columnas de enriquecimiento (idempotente: SQLite no tiene ADD COLUMN IF NOT EXISTS)
+    have = {r[1] for r in conn.execute("PRAGMA table_info(listings)")}
+    for col, typ in DETAIL_COLS:
+        if col not in have:
+            conn.execute(f"ALTER TABLE listings ADD COLUMN {col} {typ}")
+    conn.commit()
     return conn
 
 
@@ -244,6 +260,101 @@ def scrape_meli(conn, operacion, tipo, max_pages=20):
     print(f"[meli] {operacion}/{tipo}: {total} listings")
 
 
+# ---------------------------------------------------------------- detalle
+
+def _first_name(loc, key):
+    """locations.commune / .zone vienen como lista de {id,name,slug}."""
+    v = (loc or {}).get(key) or []
+    if isinstance(v, list) and v:
+        return v[0].get("name") if isinstance(v[0], dict) else str(v[0])
+    return None
+
+
+def _int(v):
+    try:
+        return int(float(str(v)))
+    except (TypeError, ValueError):
+        return None
+
+
+def parse_detail(html):
+    """Extrae de __NEXT_DATA__ lo que la pagina de listado no trae."""
+    node = HTMLParser(html).css_first("script#__NEXT_DATA__")
+    if not node:
+        return None
+    d = json.loads(node.text())["props"]["pageProps"]["data"]
+    loc = d.get("locations") or {}
+    facilities = [f["name"] for f in (d.get("facilities") or [])
+                  if isinstance(f, dict) and f.get("name")]
+    images = d.get("images") or []
+    img = images[0] if images and isinstance(images[0], str) else (
+        images[0].get("image") if images and isinstance(images[0], dict) else None)
+    owner = d.get("owner") or {}
+    ce = (d.get("commonExpenses") or {}).get("amount")
+    out = {
+        "lat": float(d["latitude"]) if d.get("latitude") else None,
+        "lng": float(d["longitude"]) if d.get("longitude") else None,
+        "estrato": _int(d.get("stratum")),
+        "comuna": _first_name(loc, "commune"),
+        "zona": _first_name(loc, "zone"),
+        "direccion": d.get("address") if str(d.get("showAddress")) == "True" else None,
+        "descripcion": d.get("description"),
+        "amenidades": json.dumps(facilities, ensure_ascii=False) if facilities else None,
+        "parqueaderos": _int(d.get("garage")),
+        "piso": _int(d.get("floor")),
+        "antiguedad": next((t["value"] for t in (d.get("technicalSheet") or [])
+                            if t.get("field") == "constructionYear"), None),
+        "estado": next((t["value"] for t in (d.get("technicalSheet") or [])
+                        if t.get("field") == "construction_state_name"), None),
+        "publicado": d.get("created_at"),
+        "owner_nombre": owner.get("name"),
+        "owner_tipo": owner.get("type"),
+        "imagen": img,
+        # El listado deja el texto crudo del ancla; el detalle trae el titulo limpio
+        "title": d.get("title"),
+        # Campos estructurados, mas confiables que los regex del listado
+        "habs": _int(d.get("bedrooms")),
+        "banos": _int(d.get("bathrooms")),
+        "area_m2": float(d["m2Built"]) if d.get("m2Built") else None,
+        "admin_cop": _int(ce) or None,
+    }
+    return {k: v for k, v in out.items() if v not in (None, "")}
+
+
+def enrich(conn, limit=None, redo=False):
+    """Un fetch por listing. Reanudable: salta los que ya tienen detail_at."""
+    q = "SELECT source, source_id, url FROM listings WHERE source='fincaraiz' AND active=1"
+    if not redo:
+        q += " AND detail_at IS NULL"
+    q += " ORDER BY last_seen DESC"
+    if limit:
+        q += f" LIMIT {int(limit)}"
+    rows = conn.execute(q).fetchall()
+    print(f"Enriqueciendo {len(rows)} listings (~{len(rows) * DELAY / 60:.0f} min)...")
+    ok = fail = 0
+    for i, (source, sid, url) in enumerate(rows, 1):
+        try:
+            det = parse_detail(fr_fetch(url))
+            if not det:
+                raise ValueError("sin __NEXT_DATA__")
+        except Exception as e:
+            fail += 1
+            print(f"  [{i}/{len(rows)}] {sid} fallo: {e}", file=sys.stderr)
+            time.sleep(DELAY)
+            continue
+        det["detail_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        sets = ", ".join(f"{k}=?" for k in det)
+        conn.execute(f"UPDATE listings SET {sets} WHERE source=? AND source_id=?",
+                     list(det.values()) + [source, sid])
+        ok += 1
+        if i % 25 == 0:
+            conn.commit()
+            print(f"  {i}/{len(rows)}  ok={ok} fallos={fail}")
+        time.sleep(DELAY)
+    conn.commit()
+    print(f"Listo: {ok} enriquecidos, {fail} fallos")
+
+
 # ---------------------------------------------------------------- report
 
 def report(conn):
@@ -285,12 +396,14 @@ def report(conn):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["scrape", "report"])
+    ap.add_argument("cmd", choices=["scrape", "report", "enrich"])
     ap.add_argument("--op", choices=OPS + ["both"], default="both")
     ap.add_argument("--tipo", default="apartamentos,casas",
                     help="coma-separado: apartamentos,casas")
     ap.add_argument("--pages", type=int, default=20)
     ap.add_argument("--skip-meli", action="store_true")
+    ap.add_argument("--limit", type=int, help="enrich: solo N listings")
+    ap.add_argument("--redo", action="store_true", help="enrich: rehacer los ya hechos")
     args = ap.parse_args()
 
     conn = db()
@@ -308,5 +421,7 @@ if __name__ == "__main__":
             n = conn.execute("SELECT COUNT(*) FROM listings WHERE active=1 "
                              "AND operacion=?", (op,)).fetchone()[0]
             print(f"Activos {op}: {n}")
+    elif args.cmd == "enrich":
+        enrich(conn, args.limit, args.redo)
     else:
         report(conn)
