@@ -22,14 +22,20 @@ Corre `supabase/migrations/001_init.sql` en el SQL editor (o vía Supabase MCP:
 ### 2 · Scraper (5 min, desde laptop)
 ```bash
 cd scrapers
-pip install -r requirements.txt
-python cali_inmuebles.py scrape            # arriendo + venta, aptos + casas
-python cali_inmuebles.py report            # sanity check local
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python cali_inmuebles.py scrape --skip-meli   # arriendo + venta, aptos + casas
+.venv/bin/python cali_inmuebles.py report               # sanity check local
 
-export SUPABASE_URL=https://xxxx.supabase.co
-export SUPABASE_SERVICE_ROLE_KEY=eyJ...
-python sync_supabase.py
+# Toma las llaves del .env.local ya lleno
+set -a && . ../web/.env.local && set +a
+export SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL"
+.venv/bin/python sync_supabase.py
 ```
+
+> **MercadoLibre está fuera de servicio como fuente.** `api.mercadolibre.com/sites/MCO/search`
+> responde **403**: ya exige OAuth para búsquedas anónimas. Por eso `--skip-meli`.
+> Para revivirlo hay que registrar una app en MeLi y meter el flujo de token en
+> `scrape_meli()`. Hoy el 100% de los datos viene de Fincaraíz.
 Después del sync, en Supabase: `REFRESH MATERIALIZED VIEW barrio_stats;`
 Repite diario (cron de laptop o GitHub Action después).
 
@@ -55,7 +61,15 @@ solar #FF7A45 (un acento por vista), alza #7BC950. Display: Space Grotesk.
 Data: IBM Plex Mono con números tabulares. Elemento firma: el **Tablero de
 barrios** — mediana y $/m² clickeable que filtra los resultados.
 
+## Estado actual
+Primera corrida real: **1.536 listings** activos, **215 barrios**.
+Proyecto Supabase `cuadra` (`ffjvykbpqlrseskxuccq`, us-east-1), migración aplicada.
+App verificada end-to-end en local: tablero y resultados con datos reales.
+
 ## Roadmap corto
+- [ ] OAuth de MercadoLibre para reactivar esa fuente (hoy 403)
+- [ ] Limpiar `title` en `fr_parse_page`: hoy guarda el texto crudo del ancla y
+      repite el precio dentro del título
 - [ ] Fetchers Metrocuadrado (Algolia) + Ciencuadras (trae comuna en la data)
 - [ ] Yield bruto por barrio (mediana venta $/m² ÷ mediana arriendo $/m²)
 - [ ] Mapa por comuna
