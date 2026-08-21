@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import Esfera, { type EstadoEsfera } from "./Esfera";
 import ListingCard from "./ListingCard";
+import Markdown from "./Markdown";
 import { leerSSE } from "@/lib/sse";
 import type { Listing } from "@/lib/types";
 
@@ -180,7 +181,7 @@ export default function ChatIntereses() {
                     </div>
                   )}
                   {t.texto && (
-                    <p className="text-sm bg-[var(--petrol-2)] border rule px-3 py-2 max-w-[80%]">
+                    <p className="text-sm bg-[var(--petrol-2)] border rule px-3 py-2 max-w-[80%] break-words">
                       {t.texto}
                     </p>
                   )}
@@ -192,7 +193,7 @@ export default function ChatIntereses() {
                   </div>
                   <div className="flex-1 space-y-3 min-w-0">
                     {t.texto ? (
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">{t.texto}</p>
+                      <Markdown>{t.texto}</Markdown>
                     ) : (
                       <p className="mono text-xs text-[var(--muted)]">buscando…</p>
                     )}
