@@ -2,6 +2,7 @@
 import { fmtCOP } from "@/lib/types";
 import type { Filtros } from "@/lib/filtros";
 import { AMENIDADES_COMUNES, TIPOS, ESTRATOS } from "@/lib/filtros";
+import { nombreFuente } from "@/lib/fuentes";
 
 /** Grupo de botones tipo "cualquiera / 1+ / 2+ / 3+". */
 function Minimos({
@@ -44,7 +45,7 @@ function Minimos({
 }
 
 export default function PanelFiltros({
-  filtros, setFiltros, limites, nResultados, onLimpiar,
+  filtros, setFiltros, limites, nResultados, onLimpiar, fuentes,
 }: {
   filtros: Filtros;
   setFiltros: (f: Partial<Filtros>) => void;
@@ -52,6 +53,9 @@ export default function PanelFiltros({
   limites: { min: number; max: number };
   nResultados: number;
   onLimpiar: () => void;
+  /** Fuentes presentes en la base, con su conteo. Sale de los datos, no de una
+   *  lista fija: una fuente nueva aparece aquí sola tras el primer sync. */
+  fuentes: { source: string; n: number }[];
 }) {
   const precioMin = filtros.precioMin ?? limites.min;
   const precioMax = filtros.precioMax ?? limites.max;
@@ -70,7 +74,7 @@ export default function PanelFiltros({
 
   const activos =
     filtros.barrios.length + filtros.estratos.length + filtros.tipos.length +
-    filtros.amenidades.length +
+    filtros.amenidades.length + filtros.fuentes.length +
     [filtros.precioMin, filtros.precioMax, filtros.habsMin, filtros.banosMin,
      filtros.areaMin, filtros.parqueaderosMin].filter((v) => v != null).length +
     (filtros.texto ? 1 : 0);
@@ -193,6 +197,36 @@ export default function PanelFiltros({
           })}
         </div>
       </div>
+
+      {/* Con una sola fuente el filtro no aporta nada; aparece solo al haber varias. */}
+      {fuentes.length > 1 && (
+        <div>
+          <p className="mono text-[10px] text-[var(--muted)] mb-1.5">FUENTE</p>
+          <div className="flex flex-wrap gap-1">
+            {fuentes.map((f) => {
+              const on = filtros.fuentes.includes(f.source);
+              return (
+                <button
+                  key={f.source}
+                  onClick={() =>
+                    setFiltros({
+                      fuentes: on
+                        ? filtros.fuentes.filter((x) => x !== f.source)
+                        : [...filtros.fuentes, f.source],
+                    })
+                  }
+                  className={`mono text-[11px] border rule px-2 py-1 inline-flex items-center gap-1.5 ${
+                    on ? "bg-[var(--solar)] text-[var(--petrol)] font-semibold" : "text-[var(--muted)] hover:text-[var(--bone)]"
+                  }`}
+                >
+                  {nombreFuente(f.source)}
+                  <span className={on ? "opacity-70" : "text-[var(--muted)]"}>{f.n}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div>
         <p className="mono text-[10px] text-[var(--muted)] mb-1.5">AMENIDADES</p>

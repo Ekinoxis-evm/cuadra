@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import AuthButton from "./AuthButton";
+
 
 /**
  * Navegación global. Vive en las dos páginas para que las funciones estén
@@ -9,14 +9,23 @@ import AuthButton from "./AuthButton";
  * enlace diminuto en el header y nadie los encontraba.
  */
 const ITEMS = [
-  { href: "/", label: "BUSCAR" },
+  { href: "/", label: "INICIO" },
+  { href: "/buscar", label: "BUSCAR" },
   { href: "/cuenta?tab=intereses", label: "ASISTENTE", destacado: true },
   { href: "/cuenta?tab=favoritos", label: "GUARDADOS" },
   { href: "/cuenta?tab=wallet", label: "WALLET" },
   { href: "/cuenta?tab=perfil", label: "PERFIL" },
 ];
 
-export default function Nav({ tabActiva }: { tabActiva?: string }) {
+export default function Nav({
+  tabActiva,
+  acciones,
+}: {
+  tabActiva?: string;
+  /** Zona derecha del header. La landing pasa un enlace simple para no cargar
+   *  Privy; las rutas con sesión pasan <AuthButton />. */
+  acciones?: React.ReactNode;
+}) {
   const pathname = usePathname();
 
   const esActivo = (href: string) => {
@@ -35,7 +44,7 @@ export default function Nav({ tabActiva }: { tabActiva?: string }) {
             precios inmobiliarios de cali · barrio por barrio
           </span>
         </Link>
-        <AuthButton />
+        {acciones}
       </div>
 
       <nav className="max-w-5xl mx-auto px-4 flex gap-1 overflow-x-auto">

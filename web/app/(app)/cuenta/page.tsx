@@ -1,7 +1,7 @@
 "use client";
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import Nav from "@/components/Nav";
+import NavApp from "@/components/NavApp";
 import ChatIntereses from "@/components/ChatIntereses";
 import Perfil from "@/components/cuenta/Perfil";
 import Wallet from "@/components/cuenta/Wallet";
@@ -18,7 +18,7 @@ function Contenido() {
 
   return (
     <>
-      <Nav tabActiva={tab} />
+      <NavApp tabActiva={tab} />
       <main className="max-w-5xl mx-auto px-4 py-6">
         {tab === "intereses" && <ChatIntereses />}
         {tab === "favoritos" && <Favoritos />}
@@ -33,7 +33,7 @@ export default function Cuenta() {
   // useSearchParams exige un límite de Suspense para no forzar render dinámico
   // de toda la ruta.
   return (
-    <Suspense fallback={<Nav />}>
+    <Suspense fallback={<NavApp />}>
       <Contenido />
     </Suspense>
   );

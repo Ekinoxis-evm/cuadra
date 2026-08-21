@@ -36,6 +36,43 @@ export function nombreFuente(source: string): string {
   return REGISTRO[source]?.nombre ?? source;
 }
 
+/**
+ * Portales que agregamos, para la sección de fuentes de la landing.
+ * `activa` refleja si hoy hay inventario suyo en la base — no se anuncia como
+ * fuente algo de lo que no tenemos un solo listing.
+ */
+export const CATALOGO_FUENTES: {
+  id: string;
+  nombre: string;
+  sitio: string;
+  nota: string;
+}[] = [
+  {
+    id: "fincaraiz",
+    nombre: "Fincaraíz",
+    sitio: "https://www.fincaraiz.com.co",
+    nota: "Portal inmobiliario con la mayor cobertura en Cali.",
+  },
+  {
+    id: "meli",
+    nombre: "Mercado Libre",
+    sitio: "https://www.mercadolibre.com.co/inmuebles",
+    nota: "Clasificados de inmuebles. Integración pendiente.",
+  },
+  {
+    id: "metrocuadrado",
+    nombre: "Metrocuadrado",
+    sitio: "https://www.metrocuadrado.com",
+    nota: "Portal de El Tiempo. Integración pendiente.",
+  },
+  {
+    id: "ciencuadras",
+    nombre: "Ciencuadras",
+    sitio: "https://www.ciencuadras.com",
+    nota: "Portal de Colpatria, trae comuna en la data. Integración pendiente.",
+  },
+];
+
 /** Favicon servido por el propio portal. null si no sabemos el dominio. */
 export function faviconDe(source: string, url?: string | null): string | null {
   const host = hostDe(source, url);

@@ -11,6 +11,7 @@ export interface Filtros {
   estratos: number[];
   tipos: string[];
   amenidades: string[];
+  fuentes: string[];
   texto: string;
   orden: Orden;
 }
@@ -37,7 +38,7 @@ export const AMENIDADES_COMUNES = [
 
 export const FILTROS_VACIOS: Filtros = {
   barrios: [], precioMin: null, precioMax: null, habsMin: null, banosMin: null,
-  areaMin: null, parqueaderosMin: null, estratos: [], tipos: [], amenidades: [],
+  areaMin: null, parqueaderosMin: null, estratos: [], tipos: [], amenidades: [], fuentes: [],
   texto: "", orden: "recientes",
 };
 

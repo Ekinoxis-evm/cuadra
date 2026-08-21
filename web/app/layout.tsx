@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import Providers from "./providers";
 
 export const metadata: Metadata = {
   title: "CUADRA — precios inmobiliarios de Cali, barrio por barrio",
@@ -19,7 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body>
-        <Providers>{children}</Providers>
+        {children}
       </body>
     </html>
   );

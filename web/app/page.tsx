@@ -1,226 +1,116 @@
-"use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { usePrivy } from "@privy-io/react-auth";
-import { supabase } from "@/lib/supabase";
-import { claveListing, type BarrioStat, type Listing, type Operacion } from "@/lib/types";
-import { FILTROS_VACIOS, ORDENES, limitesPrecio, type Filtros, type Orden } from "@/lib/filtros";
+import Link from "next/link";
 import Nav from "@/components/Nav";
-import BarrioBoard from "@/components/BarrioBoard";
-import ListingCard from "@/components/ListingCard";
-import PanelFiltros from "@/components/PanelFiltros";
+import Fuentes from "@/components/Fuentes";
+import Cifras from "@/components/Cifras";
 
-const POR_PAGINA = 48;
+/**
+ * Landing. Server Component a propósito: no trae Privy ni supabase-js al
+ * cliente, así que pesa una fracción de lo que pesa la app de búsqueda.
+ */
 
-export default function Home() {
-  const { authenticated, getAccessToken } = usePrivy();
-  const [op, setOp] = useState<Operacion>("arriendo");
-  const [stats, setStats] = useState<BarrioStat[]>([]);
-  const [listings, setListings] = useState<Listing[]>([]);
-  const [total, setTotal] = useState(0);
-  const [filtros, setF] = useState<Filtros>(FILTROS_VACIOS);
-  const [favs, setFavs] = useState<Set<string>>(new Set());
-  const [cargando, setCargando] = useState(true);
+const FEATURES = [
+  {
+    titulo: "Tablero por barrio",
+    texto:
+      "Mediana y $/m² de cada barrio de Cali, ordenable por cualquier columna. " +
+      "Marca varios barrios y compara sin salir de la vista.",
+  },
+  {
+    titulo: "Asistente que aprende",
+    texto:
+      "Cuéntale qué buscas en tus palabras, o mándale la foto de un espacio que " +
+      "te guste. Recuerda tu presupuesto y tus barrios entre sesiones.",
+  },
+  {
+    titulo: "Filtros de verdad",
+    texto:
+      "Precio, habitaciones, baños, parqueaderos, área, estrato, tipo y " +
+      "amenidades. Búsqueda de texto en español sobre la descripción completa.",
+  },
+  {
+    titulo: "Siempre a la fuente",
+    texto:
+      "Cada inmueble enlaza al portal donde está publicado. No intermediamos ni " +
+      "cobramos comisión: la negociación es directa con quien publica.",
+  },
+];
 
-  const setFiltros = useCallback(
-    (parcial: Partial<Filtros>) => setF((f) => ({ ...f, ...parcial })),
-    [],
-  );
-
-  useEffect(() => {
-    supabase.from("barrio_stats").select("*").then(({ data }) => {
-      if (data) setStats(data as BarrioStat[]);
-    });
-  }, []);
-
-  useEffect(() => {
-    setCargando(true);
-    let q = supabase
-      .from("listings")
-      .select("*", { count: "exact" })
-      .eq("active", true)
-      .eq("operacion", op);
-
-    if (filtros.barrios.length) q = q.in("barrio", filtros.barrios);
-    if (filtros.tipos.length) q = q.in("tipo", filtros.tipos);
-    if (filtros.estratos.length) q = q.in("estrato", filtros.estratos);
-    if (filtros.precioMin != null) q = q.gte("price_cop", filtros.precioMin);
-    if (filtros.precioMax != null) q = q.lte("price_cop", filtros.precioMax);
-    if (filtros.habsMin != null) q = q.gte("habs", filtros.habsMin);
-    if (filtros.banosMin != null) q = q.gte("banos", filtros.banosMin);
-    if (filtros.areaMin != null) q = q.gte("area_m2", filtros.areaMin);
-    if (filtros.parqueaderosMin != null)
-      q = q.gte("parqueaderos", filtros.parqueaderosMin);
-    if (filtros.amenidades.length) q = q.contains("amenidades", filtros.amenidades);
-    if (filtros.texto.trim())
-      // Columna generada 'busqueda': tsvector en español con índice GIN. Mucho
-      // mejor que el ilike sobre title que había antes, que ignoraba
-      // descripción y amenidades.
-      q = q.textSearch("busqueda", filtros.texto.trim(), {
-        type: "websearch",
-        config: "spanish",
-      });
-
-    const ordenes: Record<Orden, [string, boolean]> = {
-      recientes: ["last_seen", false],
-      precio_asc: ["price_cop", true],
-      precio_desc: ["price_cop", false],
-      area_desc: ["area_m2", false],
-      m2_asc: ["price_cop", true],
-    };
-    const [col, asc] = ordenes[filtros.orden];
-    q = q.order(col, { ascending: asc, nullsFirst: false });
-
-    // El efecto puede quedar obsoleto si el usuario mueve otro filtro mientras
-    // la consulta viaja; descartamos las respuestas que ya no corresponden.
-    let vigente = true;
-    q.limit(POR_PAGINA).then(({ data, count }) => {
-      if (!vigente) return;
-      setListings((data as Listing[]) ?? []);
-      setTotal(count ?? 0);
-      setCargando(false);
-    });
-    return () => { vigente = false; };
-  }, [op, filtros]);
-
-  useEffect(() => {
-    if (!authenticated) return setFavs(new Set());
-    (async () => {
-      const token = await getAccessToken();
-      const r = await fetch("/api/favoritos", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (r.ok) {
-        const rows: { source: string; source_id: string }[] = await r.json();
-        setFavs(new Set(rows.map((x) => `${x.source}:${x.source_id}`)));
-      }
-    })();
-  }, [authenticated, getAccessToken]);
-
-  async function toggleFav(l: Listing) {
-    if (!authenticated) return;
-    const key = claveListing(l);
-    const token = await getAccessToken();
-    const method = favs.has(key) ? "DELETE" : "POST";
-    const r = await fetch("/api/favoritos", {
-      method,
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ source: l.source, source_id: l.source_id }),
-    });
-    if (r.ok)
-      setFavs((prev) => {
-        const next = new Set(prev);
-        if (method === "POST") next.add(key); else next.delete(key);
-        return next;
-      });
-  }
-
-  const nActivos = useMemo(
-    () => stats.filter((s) => s.operacion === op).reduce((a, s) => a + s.n, 0),
-    [stats, op],
-  );
-
-  const toggleBarrio = useCallback(
-    (b: string) =>
-      setF((f) => ({
-        ...f,
-        barrios: f.barrios.includes(b)
-          ? f.barrios.filter((x) => x !== b)
-          : [...f.barrios, b],
-      })),
-    [],
-  );
-
+export default function Landing() {
   return (
     <>
-      <Nav />
-      <main className="max-w-5xl mx-auto px-4 pb-24">
-        <div className="flex flex-wrap items-center gap-3 mt-6">
-          <div className="flex mono text-xs">
-            {(["arriendo", "venta"] as Operacion[]).map((o) => (
-              <button
-                key={o}
-                onClick={() => { setOp(o); setF(FILTROS_VACIOS); }}
-                className={`px-4 py-2 border rule ${
-                  op === o
-                    ? "bg-[var(--solar)] text-[var(--petrol)] font-semibold"
-                    : "text-[var(--muted)] hover:text-[var(--bone)]"
-                }`}
-              >
-                {o.toUpperCase()}
-              </button>
-            ))}
-          </div>
-          <span className="mono text-[11px] text-[var(--muted)]">
-            {nActivos} con barrio · {total} en el filtro
-          </span>
-          <select
-            value={filtros.orden}
-            onChange={(e) => setFiltros({ orden: e.target.value as Orden })}
-            className="mono text-[11px] bg-transparent border rule px-2 py-1.5 ml-auto focus:outline-none focus:border-[var(--solar)]"
+      <Nav
+        acciones={
+          <Link
+            href="/cuenta?tab=perfil"
+            className="mono text-xs border rule px-3 py-1.5 hover:bg-[var(--petrol-2)]"
           >
-            {ORDENES.map((o) => (
-              <option key={o.id} value={o.id} className="bg-[var(--petrol)]">
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </div>
+            Entrar
+          </Link>
+        }
+      />
 
-        <section className="grid lg:grid-cols-[minmax(300px,400px)_1fr] gap-8 mt-6">
-          <div className="space-y-6">
-            <div>
-              <h2 className="mono text-xs text-[var(--muted)] mb-2">
-                TABLERO · mediana por barrio
-              </h2>
-              <BarrioBoard
-                stats={stats}
-                op={op}
-                seleccionados={filtros.barrios}
-                onToggle={toggleBarrio}
-                onLimpiar={() => setFiltros({ barrios: [] })}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <PanelFiltros
-              filtros={filtros}
-              setFiltros={setFiltros}
-              limites={limitesPrecio(op)}
-              nResultados={total}
-              onLimpiar={() => setF(FILTROS_VACIOS)}
-            />
-
-            {cargando ? (
-              <p className="mono text-xs text-[var(--muted)]">cargando…</p>
-            ) : !listings.length ? (
-              <p className="mono text-xs text-[var(--muted)]">
-                Nada con esos filtros. Prueba aflojar el precio o quitar amenidades.
-              </p>
-            ) : (
-              <>
-                <div className="grid sm:grid-cols-2 gap-4">
-                  {listings.map((l) => (
-                    <ListingCard
-                      key={claveListing(l)}
-                      l={l}
-                      faved={favs.has(claveListing(l))}
-                      onFav={authenticated ? () => toggleFav(l) : undefined}
-                    />
-                  ))}
-                </div>
-                {total > listings.length && (
-                  <p className="mono text-[11px] text-[var(--muted)] text-center pt-2">
-                    Mostrando {listings.length} de {total}. Afina los filtros para ver el resto.
-                  </p>
-                )}
-              </>
-            )}
+      <main className="max-w-5xl mx-auto px-4">
+        <section className="py-20 md:py-28 max-w-2xl">
+          <h1 className="text-4xl md:text-5xl font-bold tracking-tight leading-[1.1]">
+            Cuánto cuesta vivir en cada barrio de Cali.
+          </h1>
+          <p className="mt-5 text-[var(--muted)] leading-relaxed">
+            CUADRA reúne el arriendo y la venta publicados en los portales del
+            país y los convierte en algo comparable: mediana y precio por metro
+            cuadrado, barrio por barrio.
+          </p>
+          <div className="flex flex-wrap gap-3 mt-8">
+            <Link
+              href="/buscar"
+              className="mono text-xs px-5 py-3 bg-[var(--solar)] text-[var(--petrol)] font-semibold"
+            >
+              VER EL TABLERO
+            </Link>
+            <Link
+              href="/cuenta?tab=intereses"
+              className="mono text-xs px-5 py-3 border rule hover:bg-[var(--petrol-2)]"
+            >
+              HABLAR CON EL ASISTENTE
+            </Link>
           </div>
         </section>
 
-        <footer className="mono text-[11px] text-[var(--muted)] mt-16 pt-6 border-t rule">
-          Datos agregados de portales públicos. Cada listing enlaza a su fuente original.
+        <Cifras />
+
+        <section className="py-16 border-t rule">
+          <h2 className="mono text-xs text-[var(--muted)] mb-8">QUÉ HACE</h2>
+          <div className="grid sm:grid-cols-2 gap-x-10 gap-y-8">
+            {FEATURES.map((f) => (
+              <div key={f.titulo}>
+                <h3 className="font-semibold mb-2">{f.titulo}</h3>
+                <p className="text-sm text-[var(--muted)] leading-relaxed">{f.texto}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <Fuentes />
+
+        <section className="py-16 border-t rule">
+          <h2 className="text-2xl font-bold tracking-tight">
+            Empieza por tu barrio.
+          </h2>
+          <p className="mt-3 text-sm text-[var(--muted)] max-w-lg leading-relaxed">
+            No hay que registrarse para mirar precios. La cuenta solo hace falta
+            para guardar inmuebles y para que el asistente te recuerde.
+          </p>
+          <Link
+            href="/buscar"
+            className="mono text-xs px-5 py-3 bg-[var(--solar)] text-[var(--petrol)] font-semibold inline-block mt-6"
+          >
+            VER EL TABLERO
+          </Link>
+        </section>
+
+        <footer className="mono text-[11px] text-[var(--muted)] py-8 border-t rule leading-relaxed">
+          CUADRA · Cali, Colombia. Los precios son los publicados por cada portal
+          y pueden estar desactualizados. Verifica siempre en la fuente antes de
+          decidir.
         </footer>
       </main>
     </>
