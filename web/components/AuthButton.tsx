@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { usePrivy } from "@privy-io/react-auth";
 
 export default function AuthButton() {
@@ -15,9 +16,12 @@ export default function AuthButton() {
     );
   return (
     <div className="flex items-center gap-3">
-      <span className="mono text-xs text-[var(--muted)] truncate max-w-[140px]">
-        {user?.email?.address ?? user?.wallet?.address?.slice(0, 8) ?? "perfil"}
-      </span>
+      <Link
+        href="/cuenta"
+        className="mono text-xs text-[var(--muted)] hover:text-[var(--bone)] truncate max-w-[140px] underline underline-offset-4"
+      >
+        {user?.email?.address ?? user?.wallet?.address?.slice(0, 8) ?? "mi cuenta"}
+      </Link>
       <button onClick={logout} className="mono text-xs underline underline-offset-4">
         Salir
       </button>

@@ -34,7 +34,7 @@ DETAIL_COLS = [
     ("amenidades", "TEXT"), ("parqueaderos", "INTEGER"), ("piso", "INTEGER"),
     ("antiguedad", "TEXT"), ("estado", "TEXT"), ("publicado", "TEXT"),
     ("owner_nombre", "TEXT"), ("owner_tipo", "TEXT"), ("imagen", "TEXT"),
-    ("detail_at", "TEXT"),
+    ("imagenes", "TEXT"), ("detail_at", "TEXT"),
 ]
 
 # Mercado Libre: MCO1459 = Inmuebles. Filtramos operación por atributo en cada resultado.
@@ -277,6 +277,15 @@ def _int(v):
         return None
 
 
+def _img_url(x):
+    """Un elemento de images[] puede ser la URL suelta o un dict que la envuelve."""
+    if isinstance(x, str):
+        return x or None
+    if isinstance(x, dict):
+        return x.get("image") or x.get("url") or None
+    return None
+
+
 def parse_detail(html):
     """Extrae de __NEXT_DATA__ lo que la pagina de listado no trae."""
     node = HTMLParser(html).css_first("script#__NEXT_DATA__")
@@ -286,9 +295,9 @@ def parse_detail(html):
     loc = d.get("locations") or {}
     facilities = [f["name"] for f in (d.get("facilities") or [])
                   if isinstance(f, dict) and f.get("name")]
-    images = d.get("images") or []
-    img = images[0] if images and isinstance(images[0], str) else (
-        images[0].get("image") if images and isinstance(images[0], dict) else None)
+    # La galeria entera viene en __NEXT_DATA__; antes se guardaba solo la [0].
+    # Los elementos son str o dict segun el listing, asi que se normalizan.
+    imgs = [u for u in (_img_url(x) for x in (d.get("images") or [])) if u]
     owner = d.get("owner") or {}
     ce = (d.get("commonExpenses") or {}).get("amount")
     out = {
@@ -309,7 +318,9 @@ def parse_detail(html):
         "publicado": d.get("created_at"),
         "owner_nombre": owner.get("name"),
         "owner_tipo": owner.get("type"),
-        "imagen": img,
+        # imagen se mantiene: es la portada que ya usan las tarjetas
+        "imagen": imgs[0] if imgs else None,
+        "imagenes": json.dumps(imgs, ensure_ascii=False) if imgs else None,
         # El listado deja el texto crudo del ancla; el detalle trae el titulo limpio
         "title": d.get("title"),
         # Campos estructurados, mas confiables que los regex del listado

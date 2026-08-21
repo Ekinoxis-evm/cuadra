@@ -10,10 +10,24 @@ export interface Listing {
   price_cop: number;
   admin_cop: number | null;
   barrio: string | null;
+  zona: string | null;
   habs: number | null;
   banos: number | null;
   area_m2: number | null;
   last_seen: string;
+
+  // Enriquecimiento desde la página de detalle (migraciones 002 y 003).
+  // Todo opcional: 1.532 de 1.536 listings lo tienen, no el 100%.
+  imagen?: string | null;
+  imagenes?: string[] | null;
+  descripcion?: string | null;
+  amenidades?: string[] | null;
+  estrato?: number | null;
+  comuna?: string | null;
+  direccion?: string | null;
+  parqueaderos?: number | null;
+  lat?: number | null;
+  lng?: number | null;
 }
 
 export interface BarrioStat {
@@ -26,5 +40,24 @@ export interface BarrioStat {
   median_m2: number | null;
 }
 
+/** Lo que el agente aprende del usuario y reusa entre sesiones. */
+export interface Preferencias {
+  operacion?: Operacion | null;
+  barrios?: string[] | null;
+  presupuesto_min?: number | null;
+  presupuesto_max?: number | null;
+  habs_min?: number | null;
+  banos_min?: number | null;
+  area_min?: number | null;
+  estrato_min?: number | null;
+  estrato_max?: number | null;
+  amenidades?: string[] | null;
+  notas?: string | null;
+}
+
 export const fmtCOP = (n: number) =>
   "$" + Math.round(n).toLocaleString("es-CO");
+
+/** Clave estable de un listing: la tabla usa (source, source_id) como PK. */
+export const claveListing = (l: Pick<Listing, "source" | "source_id">) =>
+  `${l.source}:${l.source_id}`;
