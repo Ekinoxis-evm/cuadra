@@ -25,3 +25,5 @@ scrapers/*.csv
 
 # vercel
 .vercel
+.env*
+!.env.example
