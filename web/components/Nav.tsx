@@ -14,6 +14,7 @@ const ITEMS = [
   { href: "/cuenta?tab=intereses", label: "ASISTENTE", destacado: true },
   { href: "/cuenta?tab=favoritos", label: "GUARDADOS" },
   { href: "/cuenta?tab=wallet", label: "WALLET" },
+  { href: "/cuenta?tab=proyectos", label: "PROYECTOS" },
   { href: "/cuenta?tab=perfil", label: "PERFIL" },
 ];
 

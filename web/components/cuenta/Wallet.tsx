@@ -1,45 +1,54 @@
 "use client";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePrivy, useWallets, useFundWallet } from "@privy-io/react-auth";
+import { ACTIVOS, formatearUnidades } from "@/lib/activos";
 
 /**
- * Fondeo de la wallet del usuario.
+ * Wallet del usuario.
  *
- * Los tres métodos salen del mismo hook: `defaultFundingMethod` salta el paso de
- * selección y abre directo el flujo pedido. Privy soporta 'card' | 'exchange' |
- * 'wallet' | 'manual'; usamos los tres primeros.
+ * Las cadenas son invisibles a propósito: hay una sola dirección — Celo es EVM,
+ * así que la misma sirve en ambas — y una lista de saldos. En ningún lado se
+ * dice "Ethereum" o "Celo"; el usuario ve USDC, USDT, ETH y COPm y ya.
  *
- * Requiere tener card/exchange habilitados en dashboard.privy.io > Funding.
- * Si no están activos, el modal abre pero sin opciones disponibles.
+ * Los tres métodos de fondeo salen del mismo hook de Privy; `defaultFundingMethod`
+ * abre directo el flujo pedido en vez del selector.
+ * Requieren estar habilitados en dashboard.privy.io > Funding.
  */
 const METODOS = [
-  {
-    id: "card" as const,
-    titulo: "Tarjeta",
-    detalle: "Débito, crédito, Apple Pay o Google Pay. Sin fees ni mínimos.",
-  },
-  {
-    id: "exchange" as const,
-    titulo: "Exchange",
-    detalle: "Transfiere desde Coinbase, Binance u otro exchange.",
-  },
-  {
-    id: "wallet" as const,
-    titulo: "Depósito cripto",
-    detalle: "Envía desde otra wallet a tu dirección de depósito.",
-  },
+  { id: "card" as const, titulo: "Tarjeta", detalle: "Débito, crédito, Apple Pay o Google Pay." },
+  { id: "exchange" as const, titulo: "Exchange", detalle: "Transfiere desde Coinbase, Binance u otro." },
+  { id: "wallet" as const, titulo: "Depósito cripto", detalle: "Envía desde otra wallet a tu dirección." },
 ];
+
+interface Saldo {
+  id: string;
+  bruto: string | null;
+  error: string | null;
+}
 
 export default function Wallet() {
   const { ready, authenticated, user } = usePrivy();
   const { wallets } = useWallets();
   const { fundWallet } = useFundWallet();
+  const [saldos, setSaldos] = useState<Saldo[] | null>(null);
   const [abriendo, setAbriendo] = useState<string | null>(null);
+  const [copiado, setCopiado] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // La embedded wallet de Privy es la que fondeamos; si el usuario entró con una
-  // wallet externa, usamos esa.
   const direccion = user?.wallet?.address ?? wallets[0]?.address ?? null;
+
+  const cargarSaldos = useCallback(async () => {
+    if (!direccion) return;
+    try {
+      const r = await fetch(`/api/saldos?address=${direccion}`);
+      const j = await r.json();
+      setSaldos(j.saldos ?? []);
+    } catch {
+      setSaldos([]);
+    }
+  }, [direccion]);
+
+  useEffect(() => { cargarSaldos(); }, [cargarSaldos]);
 
   async function fondear(metodo: (typeof METODOS)[number]["id"]) {
     if (!direccion) return;
@@ -47,11 +56,23 @@ export default function Wallet() {
     setAbriendo(metodo);
     try {
       await fundWallet(direccion, { defaultFundingMethod: metodo });
+      // Tras fondear, el saldo tarda en confirmarse; recargamos igual.
+      cargarSaldos();
     } catch (e) {
-      // El usuario cerrando el modal también cae acá; no es un fallo real.
       setError(e instanceof Error ? e.message : "No se pudo abrir el fondeo");
     } finally {
       setAbriendo(null);
+    }
+  }
+
+  async function copiar() {
+    if (!direccion) return;
+    try {
+      await navigator.clipboard.writeText(direccion);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 1800);
+    } catch {
+      // Sin permiso de portapapeles: el usuario puede seleccionar el texto.
     }
   }
 
@@ -60,16 +81,51 @@ export default function Wallet() {
     return <p className="mono text-xs text-[var(--muted)]">Entra para ver tu wallet.</p>;
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="max-w-2xl space-y-8">
       <div>
-        <h2 className="mono text-[11px] text-[var(--muted)] mb-2">TU WALLET</h2>
+        <h2 className="mono text-[11px] text-[var(--muted)] mb-2">TU DIRECCIÓN</h2>
         {direccion ? (
-          <p className="mono text-xs break-all border rule px-3 py-2.5">{direccion}</p>
+          <button
+            onClick={copiar}
+            className="mono text-xs break-all border rule px-3 py-2.5 w-full text-left hover:bg-[var(--petrol-2)]"
+          >
+            {direccion}
+            <span className="text-[var(--solar)] ml-2">{copiado ? "copiado" : "copiar"}</span>
+          </button>
         ) : (
           <p className="mono text-xs text-[var(--muted)]">
             Todavía no tienes wallet. Se crea sola al entrar con correo o Google.
           </p>
         )}
+        <p className="mono text-[10px] text-[var(--muted)] mt-2 leading-relaxed">
+          Una sola dirección para todos tus activos. No tienes que escoger red.
+        </p>
+      </div>
+
+      <div>
+        <h2 className="mono text-[11px] text-[var(--muted)] mb-2">SALDOS</h2>
+        <div className="border rule divide-y divide-[color-mix(in_srgb,var(--muted)_35%,transparent)]">
+          {ACTIVOS.map((a) => {
+            const s = saldos?.find((x) => x.id === a.id);
+            return (
+              <div key={a.id} className="flex items-center justify-between gap-4 px-3 py-3">
+                <div className="min-w-0">
+                  <p className="mono text-xs font-semibold">{a.simbolo}</p>
+                  <p className="mono text-[10px] text-[var(--muted)] truncate">{a.nombre}</p>
+                </div>
+                <p className="mono text-sm text-right">
+                  {!saldos ? (
+                    <span className="text-[var(--muted)]">···</span>
+                  ) : s?.error || s?.bruto == null ? (
+                    <span className="mono text-[10px] text-[var(--muted)]">no disponible</span>
+                  ) : (
+                    formatearUnidades(BigInt(s.bruto), a.decimales)
+                  )}
+                </p>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       <div>
@@ -92,9 +148,7 @@ export default function Wallet() {
           ))}
         </div>
         {error && (
-          <p className="mono text-[11px] text-[var(--solar)] mt-3" role="alert">
-            {error}
-          </p>
+          <p className="mono text-[11px] text-[var(--solar)] mt-3" role="alert">{error}</p>
         )}
       </div>
     </div>
