@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "foundry-docs": {
+      "type": "http",
+      "url": "https://www.getfoundry.sh/api/mcp"
+    }
+  }
+}
