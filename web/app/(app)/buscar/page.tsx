@@ -21,11 +21,59 @@ export default function Home() {
   const [fuentes, setFuentes] = useState<{ source: string; n: number }[]>([]);
   const [favs, setFavs] = useState<Set<string>>(new Set());
   const [cargando, setCargando] = useState(true);
+  const [pagina, setPagina] = useState(0);
+  const [cargandoMas, setCargandoMas] = useState(false);
 
-  const setFiltros = useCallback(
-    (parcial: Partial<Filtros>) => setF((f) => ({ ...f, ...parcial })),
-    [],
-  );
+  const setFiltros = useCallback((parcial: Partial<Filtros>) => {
+    // Cambiar un filtro reinicia la paginacion: quedarse en la pagina 3 de un
+    // resultado que ahora tiene 12 items deja la vista vacia sin explicacion.
+    setPagina(0);
+    setF((f) => ({ ...f, ...parcial }));
+  }, []);
+
+  // La consulta se arma igual para la primera pagina y para "cargar mas"; lo
+  // unico que cambia es el rango.
+  const construirConsulta = useCallback(() => {
+    let q = supabase
+      .from("listings")
+      .select("*", { count: "exact" })
+      .eq("active", true)
+      .eq("operacion", op);
+
+    if (filtros.barrios.length) q = q.in("barrio", filtros.barrios);
+    if (filtros.tipos.length) q = q.in("tipo", filtros.tipos);
+    if (filtros.fuentes.length) q = q.in("source", filtros.fuentes);
+    if (filtros.estratos.length) q = q.in("estrato", filtros.estratos);
+    if (filtros.precioMin != null) q = q.gte("price_cop", filtros.precioMin);
+    if (filtros.precioMax != null) q = q.lte("price_cop", filtros.precioMax);
+    if (filtros.habsMin != null) q = q.gte("habs", filtros.habsMin);
+    if (filtros.banosMin != null) q = q.gte("banos", filtros.banosMin);
+    if (filtros.areaMin != null) q = q.gte("area_m2", filtros.areaMin);
+    if (filtros.parqueaderosMin != null) q = q.gte("parqueaderos", filtros.parqueaderosMin);
+    if (filtros.amenidades.length) q = q.contains("amenidades", filtros.amenidades);
+    if (filtros.texto.trim())
+      q = q.textSearch("busqueda", filtros.texto.trim(), { type: "websearch", config: "spanish" });
+
+    const ordenes: Record<Orden, [string, boolean]> = {
+      recientes: ["last_seen", false],
+      precio_asc: ["price_cop", true],
+      precio_desc: ["price_cop", false],
+      area_desc: ["area_m2", false],
+      m2_asc: ["precio_m2", true],
+    };
+    const [col, asc] = ordenes[filtros.orden];
+    return q.order(col, { ascending: asc, nullsFirst: false });
+  }, [op, filtros]);
+
+  async function cargarMas() {
+    setCargandoMas(true);
+    const siguiente = pagina + 1;
+    const desde = siguiente * POR_PAGINA;
+    const { data } = await construirConsulta().range(desde, desde + POR_PAGINA - 1);
+    setListings((prev) => [...prev, ...((data as Listing[]) ?? [])]);
+    setPagina(siguiente);
+    setCargandoMas(false);
+  }
 
   useEffect(() => {
     supabase.from("barrio_stats").select("*").then(({ data }) => {
@@ -55,54 +103,20 @@ export default function Home() {
 
   useEffect(() => {
     setCargando(true);
-    let q = supabase
-      .from("listings")
-      .select("*", { count: "exact" })
-      .eq("active", true)
-      .eq("operacion", op);
-
-    if (filtros.barrios.length) q = q.in("barrio", filtros.barrios);
-    if (filtros.tipos.length) q = q.in("tipo", filtros.tipos);
-    if (filtros.fuentes.length) q = q.in("source", filtros.fuentes);
-    if (filtros.estratos.length) q = q.in("estrato", filtros.estratos);
-    if (filtros.precioMin != null) q = q.gte("price_cop", filtros.precioMin);
-    if (filtros.precioMax != null) q = q.lte("price_cop", filtros.precioMax);
-    if (filtros.habsMin != null) q = q.gte("habs", filtros.habsMin);
-    if (filtros.banosMin != null) q = q.gte("banos", filtros.banosMin);
-    if (filtros.areaMin != null) q = q.gte("area_m2", filtros.areaMin);
-    if (filtros.parqueaderosMin != null)
-      q = q.gte("parqueaderos", filtros.parqueaderosMin);
-    if (filtros.amenidades.length) q = q.contains("amenidades", filtros.amenidades);
-    if (filtros.texto.trim())
-      // Columna generada 'busqueda': tsvector en español con índice GIN. Mucho
-      // mejor que el ilike sobre title que había antes, que ignoraba
-      // descripción y amenidades.
-      q = q.textSearch("busqueda", filtros.texto.trim(), {
-        type: "websearch",
-        config: "spanish",
-      });
-
-    const ordenes: Record<Orden, [string, boolean]> = {
-      recientes: ["last_seen", false],
-      precio_asc: ["price_cop", true],
-      precio_desc: ["price_cop", false],
-      area_desc: ["area_m2", false],
-      m2_asc: ["price_cop", true],
-    };
-    const [col, asc] = ordenes[filtros.orden];
-    q = q.order(col, { ascending: asc, nullsFirst: false });
-
+    setPagina(0);
     // El efecto puede quedar obsoleto si el usuario mueve otro filtro mientras
     // la consulta viaja; descartamos las respuestas que ya no corresponden.
     let vigente = true;
-    q.limit(POR_PAGINA).then(({ data, count }) => {
-      if (!vigente) return;
-      setListings((data as Listing[]) ?? []);
-      setTotal(count ?? 0);
-      setCargando(false);
-    });
+    construirConsulta()
+      .range(0, POR_PAGINA - 1)
+      .then(({ data, count }) => {
+        if (!vigente) return;
+        setListings((data as Listing[]) ?? []);
+        setTotal(count ?? 0);
+        setCargando(false);
+      });
     return () => { vigente = false; };
-  }, [op, filtros]);
+  }, [construirConsulta]);
 
   useEffect(() => {
     if (!authenticated) return setFavs(new Set());
@@ -233,9 +247,18 @@ export default function Home() {
                   ))}
                 </div>
                 {total > listings.length && (
-                  <p className="mono text-[11px] text-[var(--muted)] text-center pt-2">
-                    Mostrando {listings.length} de {total}. Afina los filtros para ver el resto.
-                  </p>
+                  <div className="text-center pt-2 space-y-2">
+                    <button
+                      onClick={cargarMas}
+                      disabled={cargandoMas}
+                      className="mono text-xs border rule px-5 py-2.5 hover:bg-[var(--petrol-2)] disabled:opacity-40"
+                    >
+                      {cargandoMas ? "cargando…" : "CARGAR MÁS"}
+                    </button>
+                    <p className="mono text-[11px] text-[var(--muted)]">
+                      {listings.length} de {total}
+                    </p>
+                  </div>
                 )}
               </>
             )}
