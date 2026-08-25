@@ -38,7 +38,10 @@ function Contenido() {
       <NavApp tabActiva={tab} />
       <main className="max-w-5xl mx-auto px-4 py-6">
         {necesitaOnboarding ? (
-          <Onboarding onListo={() => setNecesitaOnboarding(false)} />
+          <Onboarding
+            onListo={() => setNecesitaOnboarding(false)}
+            onOmitir={() => setNecesitaOnboarding(false)}
+          />
         ) : (
         <>
         {tab === "intereses" && <ChatIntereses />}

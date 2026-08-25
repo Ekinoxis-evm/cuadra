@@ -18,7 +18,15 @@ const INTERESES = [
   },
 ];
 
-export default function Onboarding({ onListo }: { onListo: () => void }) {
+export default function Onboarding({
+  onListo,
+  onOmitir,
+}: {
+  onListo: () => void;
+  /** Salida sin llenar nada. Un formulario obligatorio entre el usuario y la
+   *  app se siente como estar atascado, y se reporta como "me dio error". */
+  onOmitir: () => void;
+}) {
   const { getAccessToken } = usePrivy();
   const [nombre, setNombre] = useState("");
   const [apellido, setApellido] = useState("");
@@ -118,13 +126,22 @@ export default function Onboarding({ onListo }: { onListo: () => void }) {
         <p className="mono text-[11px] text-[var(--solar)]" role="alert">{error}</p>
       )}
 
-      <button
-        type="submit"
-        disabled={guardando || !nombre.trim() || !sel.length}
-        className="mono text-xs px-5 py-3 bg-[var(--solar)] text-[var(--petrol)] font-semibold w-full disabled:opacity-40 disabled:bg-transparent disabled:text-[var(--muted)] disabled:border disabled:rule"
-      >
-        {guardando ? "guardando…" : "EMPEZAR"}
-      </button>
+      <div className="space-y-3">
+        <button
+          type="submit"
+          disabled={guardando || !nombre.trim() || !sel.length}
+          className="mono text-xs px-5 py-3 bg-[var(--solar)] text-[var(--petrol)] font-semibold w-full disabled:opacity-40 disabled:bg-transparent disabled:text-[var(--muted)] disabled:border disabled:rule"
+        >
+          {guardando ? "guardando…" : "EMPEZAR"}
+        </button>
+        <button
+          type="button"
+          onClick={onOmitir}
+          className="mono text-[11px] text-[var(--muted)] hover:text-[var(--bone)] w-full text-center"
+        >
+          ahora no, quiero mirar primero
+        </button>
+      </div>
     </form>
   );
 }
