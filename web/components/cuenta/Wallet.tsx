@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePrivy, useWallets, useFundWallet } from "@privy-io/react-auth";
 import { ACTIVOS, formatearUnidades } from "@/lib/activos";
+import EntrarCTA from "@/components/EntrarCTA";
 
 /**
  * Wallet del usuario.
@@ -78,7 +79,12 @@ export default function Wallet() {
 
   if (!ready) return <p className="mono text-xs text-[var(--muted)]">···</p>;
   if (!authenticated)
-    return <p className="mono text-xs text-[var(--muted)]">Entra para ver tu wallet.</p>;
+    return (
+      <EntrarCTA
+        mensaje="Tu wallet se crea sola al abrir la cuenta: no tienes que instalar nada ni guardar frases de respaldo."
+        nota="Con tu correo o Google. La wallet queda lista en el mismo paso."
+      />
+    );
 
   return (
     <div className="max-w-2xl space-y-8">

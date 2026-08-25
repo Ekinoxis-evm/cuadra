@@ -6,7 +6,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     <PrivyProvider
       appId={process.env.NEXT_PUBLIC_PRIVY_APP_ID!}
       config={{
-        loginMethods: ["email", "wallet", "google"],
+        // passkey va en la lista para cerrar el círculo: la llave se configura
+        // en Ajustes y sirve para volver a entrar sin correo ni código.
+        loginMethods: ["email", "google", "passkey", "wallet"],
         appearance: {
           theme: "dark",
           accentColor: "#ff7a45",

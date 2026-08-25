@@ -41,10 +41,10 @@ export default function Landing() {
       <Nav
         acciones={
           <Link
-            href="/cuenta?tab=perfil"
-            className="mono text-xs border rule px-3 py-1.5 hover:bg-[var(--petrol-2)]"
+            href="/entrar"
+            className="mono text-xs px-4 py-2 bg-[var(--solar)] text-[var(--petrol)] font-semibold"
           >
-            Entrar
+            CREAR CUENTA
           </Link>
         }
       />
@@ -99,12 +99,20 @@ export default function Landing() {
             No hay que registrarse para mirar precios. La cuenta solo hace falta
             para guardar inmuebles y para que el asistente te recuerde.
           </p>
-          <Link
-            href="/buscar"
-            className="mono text-xs px-5 py-3 bg-[var(--solar)] text-[var(--petrol)] font-semibold inline-block mt-6"
-          >
-            VER EL TABLERO
-          </Link>
+          <div className="flex flex-wrap gap-3 mt-6">
+            <Link
+              href="/buscar"
+              className="mono text-xs px-5 py-3 bg-[var(--solar)] text-[var(--petrol)] font-semibold"
+            >
+              VER EL TABLERO
+            </Link>
+            <Link
+              href="/entrar"
+              className="mono text-xs px-5 py-3 border rule hover:bg-[var(--petrol-2)]"
+            >
+              CREAR CUENTA
+            </Link>
+          </div>
         </section>
 
         <footer className="mono text-[11px] text-[var(--muted)] py-8 border-t rule leading-relaxed">

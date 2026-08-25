@@ -8,6 +8,7 @@ import { leerSSE } from "@/lib/sse";
 import { reconstruir } from "@/lib/historial";
 import type { Listing } from "@/lib/types";
 import type { Turno } from "@/lib/historial";
+import EntrarCTA from "@/components/EntrarCTA";
 
 const SUGERENCIAS = [
   "Arriendo en el sur, máximo 2.5 millones",
@@ -167,12 +168,9 @@ export default function ChatIntereses() {
 
   if (!authenticated)
     return (
-      <div className="flex flex-col items-center gap-6 py-20 text-center">
+      <div className="flex flex-col items-center gap-6 py-20">
         <Esfera estado="reposo" size={140} />
-        <p className="mono text-xs text-[var(--muted)] max-w-sm">
-          Entra con tu perfil para conversar. El asistente recuerda lo que busques
-          y afina las recomendaciones con cada conversación.
-        </p>
+        <EntrarCTA mensaje="El asistente recuerda lo que buscas entre sesiones y afina las recomendaciones con cada conversación. Para eso necesita saber quién eres." />
       </div>
     );
 

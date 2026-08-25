@@ -2,6 +2,13 @@
 import Link from "next/link";
 import { usePrivy } from "@privy-io/react-auth";
 
+/**
+ * Sin sesión hay un botón y solo uno.
+ *
+ * "Crear perfil / Entrar" obligaba a decidir en qué caso estaba uno antes de
+ * poder hacer nada, y el modal de Privy hace lo mismo en los dos: pide el
+ * correo y sigue. Un botón, un camino.
+ */
 export default function AuthButton() {
   const { ready, authenticated, user, login, logout } = usePrivy();
   if (!ready) return <span className="mono text-xs text-[var(--muted)]">···</span>;
@@ -9,9 +16,9 @@ export default function AuthButton() {
     return (
       <button
         onClick={login}
-        className="mono text-xs border rule px-3 py-1.5 hover:bg-[var(--petrol-2)]"
+        className="mono text-xs px-4 py-2 bg-[var(--solar)] text-[var(--petrol)] font-semibold"
       >
-        Crear perfil / Entrar
+        CREAR CUENTA
       </button>
     );
   return (

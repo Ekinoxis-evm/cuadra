@@ -4,6 +4,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import { supabase } from "@/lib/supabase";
 import ListingCard from "@/components/ListingCard";
 import { claveListing, type Listing } from "@/lib/types";
+import EntrarCTA from "@/components/EntrarCTA";
 
 export default function Favoritos() {
   const { ready, authenticated, getAccessToken } = usePrivy();
@@ -57,7 +58,9 @@ export default function Favoritos() {
 
   if (!ready) return <p className="mono text-xs text-[var(--muted)]">···</p>;
   if (!authenticated)
-    return <p className="mono text-xs text-[var(--muted)]">Entra para ver tus guardados.</p>;
+    return (
+      <EntrarCTA mensaje="Guarda inmuebles del tablero y vuelve a ellos cuando quieras. Para que sobrevivan a la sesión hace falta una cuenta." />
+    );
   if (cargando) return <p className="mono text-xs text-[var(--muted)]">cargando…</p>;
 
   if (!listings.length)
