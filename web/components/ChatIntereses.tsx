@@ -1,20 +1,13 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import Esfera, { type EstadoEsfera } from "./Esfera";
 import ListingCard from "./ListingCard";
 import Markdown from "./Markdown";
 import { leerSSE } from "@/lib/sse";
+import { reconstruir } from "@/lib/historial";
 import type { Listing } from "@/lib/types";
-
-interface Turno {
-  rol: "user" | "assistant";
-  texto: string;
-  /** Fotos que subió el usuario, como data URL para previsualizar. */
-  fotos?: string[];
-  /** Inmuebles que el agente encontró en este turno. */
-  inmuebles?: Listing[];
-}
+import type { Turno } from "@/lib/historial";
 
 const SUGERENCIAS = [
   "Arriendo en el sur, máximo 2.5 millones",
@@ -30,6 +23,8 @@ export default function ChatIntereses() {
   const [estado, setEstado] = useState<EstadoEsfera>("reposo");
   const [error, setError] = useState<string | null>(null);
   const [conversacionId, setConversacionId] = useState<string | null>(null);
+  const [hilos, setHilos] = useState<{ id: string; titulo: string | null; updated_at: string }[]>([]);
+  const [cargandoHilo, setCargandoHilo] = useState(false);
   const finRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -38,6 +33,42 @@ export default function ChatIntereses() {
   useEffect(() => {
     finRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [turnos]);
+
+  const abrirHilo = useCallback(async (id: string) => {
+    setCargandoHilo(true);
+    try {
+      const token = await getAccessToken();
+      const r = await fetch(`/api/chat?conversacion=${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) return;
+      setTurnos(await reconstruir(await r.json()));
+      setConversacionId(id);
+    } finally {
+      setCargandoHilo(false);
+    }
+  }, [getAccessToken]);
+
+  // Al entrar se retoma la ultima conversacion en vez de arrancar en blanco:
+  // el historial ya se guardaba, pero la UI nunca lo leia de vuelta y cada
+  // sesion empezaba de cero.
+  useEffect(() => {
+    if (!authenticated) return;
+    (async () => {
+      const token = await getAccessToken();
+      const r = await fetch("/api/chat", { headers: { Authorization: `Bearer ${token}` } });
+      if (!r.ok) return;
+      const lista = await r.json();
+      setHilos(lista);
+      if (lista.length) abrirHilo(lista[0].id);
+    })();
+  }, [authenticated, getAccessToken, abrirHilo]);
+
+  function nuevoHilo() {
+    setConversacionId(null);
+    setTurnos([]);
+    setError(null);
+  }
 
   async function agregarFotos(files: FileList | null) {
     if (!files) return;
@@ -95,7 +126,13 @@ export default function ChatIntereses() {
 
       for await (const { evento, dato } of leerSSE(res)) {
         if (evento === "conversacion") {
-          setConversacionId((dato as { id: string }).id);
+          const id = (dato as { id: string }).id;
+          setConversacionId(id);
+          setHilos((h) =>
+            h.some((x) => x.id === id)
+              ? h
+              : [{ id, titulo: texto.slice(0, 80), updated_at: new Date().toISOString() }, ...h],
+          );
         } else if (evento === "texto") {
           setEstado("hablando");
           // El delta llega como string JSON; se acumula en el último turno.
@@ -143,7 +180,38 @@ export default function ChatIntereses() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-13rem)]">
-      {vacio ? (
+      {/* Barra de hilos: el historial vive entre sesiones, asi que hay que
+          poder volver a una conversacion vieja y no solo continuar la ultima. */}
+      {hilos.length > 0 && (
+        <div className="flex items-center gap-2 overflow-x-auto pb-3 border-b rule mb-4">
+          <button
+            onClick={nuevoHilo}
+            className="mono text-[11px] border rule px-2.5 py-1.5 shrink-0 text-[var(--solar)] hover:bg-[var(--petrol-2)]"
+          >
+            + nueva
+          </button>
+          {hilos.map((h) => (
+            <button
+              key={h.id}
+              onClick={() => abrirHilo(h.id)}
+              title={h.titulo ?? "Sin título"}
+              className={`mono text-[11px] border rule px-2.5 py-1.5 shrink-0 max-w-[190px] truncate ${
+                conversacionId === h.id
+                  ? "border-[var(--solar)] text-[var(--bone)]"
+                  : "text-[var(--muted)] hover:text-[var(--bone)]"
+              }`}
+            >
+              {h.titulo?.trim() || "sin título"}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {cargandoHilo ? (
+        <div className="flex-1 flex items-center justify-center">
+          <Esfera estado="pensando" size={96} />
+        </div>
+      ) : vacio ? (
         // Estado de espera: la esfera al centro, como pediste.
         <div className="flex-1 flex flex-col items-center justify-center gap-8 text-center">
           <Esfera estado={estado} size={176} />
