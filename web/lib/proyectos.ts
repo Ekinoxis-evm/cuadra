@@ -110,13 +110,11 @@ export const TIPOS_DOCUMENTO = [
     detalle:
       "Certificado de tradición y libertad, escritura o el documento que acredita quién es el dueño del predio.",
   },
-  {
-    id: "fotos",
-    titulo: "Registro fotográfico",
-    detalle: "Fotos del estado actual del espacio, por dentro y por fuera.",
-  },
   { id: "otro", titulo: "Otro documento", detalle: "Cualquier soporte que ayude a entender el proyecto." },
 ] as const;
+
+/** Los tres que la revisión considera soporte técnico de verdad. */
+export const SOPORTES_TECNICOS = ["peritaje", "avaluo", "evaluacion"];
 
 export const MAX_BYTES_DOC = 10 * 1024 * 1024;
 export const MIMES_DOC = [
@@ -125,6 +123,10 @@ export const MIMES_DOC = [
   "image/png",
   "image/webp",
 ];
+
+export const MAX_BYTES_FOTO = 10 * 1024 * 1024;
+export const MIMES_FOTO = ["image/jpeg", "image/png", "image/webp"];
+export const MAX_FOTOS = 8;
 
 export interface Documento {
   tipo: string;
@@ -174,3 +176,138 @@ export const RUTA_PUBLICAR = [
     nota: "El proyecto es público y puede recibir aportes.",
   },
 ];
+
+/**
+ * El did de Privy trae ':' y las llaves del storage se llevan mal con eso.
+ * Es el prefijo de la carpeta del usuario en los dos buckets.
+ */
+export const carpetaDe = (did: string) => did.replace(/[^a-zA-Z0-9]/g, "-");
+
+/** Prefijo público de las fotos de un usuario, para validar propiedad. */
+export const prefijoFotos = (did: string) =>
+  `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/proyectos/${carpetaDe(did)}/`;
+
+export interface DatosProyecto {
+  titulo: string;
+  descripcion: string;
+  tipo: string;
+  proponente: string;
+  estado_obra: string;
+  estado_detalle: string | null;
+  barrio: string | null;
+  direccion: string | null;
+  area_m2: number | null;
+  plazo_meses: number | null;
+  meta_cop: number;
+  documentos: Documento[];
+  imagenes: string[];
+}
+
+/**
+ * Validación de una propuesta, compartida por crear y editar.
+ *
+ * Vive junto al vocabulario y no dentro de una ruta porque las tres entradas
+ * que escriben un proyecto (POST, PATCH y el envío a revisión) tienen que
+ * exigir exactamente lo mismo; cuando la regla estaba copiada en cada ruta,
+ * editar dejaba pasar lo que crear rechazaba.
+ *
+ * `did` es de quien pide: los adjuntos los escribe el navegador y podrían
+ * apuntar a la carpeta de otra cuenta.
+ */
+export function validarProyecto(
+  body: Record<string, unknown>,
+  did: string,
+): { error: string } | { datos: DatosProyecto } {
+  const texto = (v: unknown) => String(v ?? "").trim();
+  const titulo = texto(body.titulo);
+  const descripcion = texto(body.descripcion);
+  const tipo = texto(body.tipo);
+  const proponente = texto(body.proponente) || "persona";
+  const estadoObra = texto(body.estado_obra);
+  const meta = Number(body.meta_cop ?? 0);
+  const area =
+    body.area_m2 == null || body.area_m2 === "" ? null : Number(body.area_m2);
+  const plazo =
+    body.plazo_meses == null || body.plazo_meses === ""
+      ? null
+      : Number(body.plazo_meses);
+
+  if (titulo.length < 6) return { error: "El título es muy corto" };
+  if (!TIPOS.some((t) => t.id === tipo))
+    return { error: "Tipo de proyecto inválido" };
+  if (!PROPONENTES.some((p) => p.id === proponente))
+    return { error: "Tipo de proponente inválido" };
+  if (descripcion.length < 40)
+    return {
+      error:
+        "Cuenta con un poco más de detalle qué se va a hacer (mínimo 40 caracteres)",
+    };
+  if (!ESTADOS_OBRA.some((e) => e.id === estadoObra))
+    return { error: "Escoge en qué estado está el espacio hoy" };
+  if (!Number.isFinite(meta) || meta <= 0)
+    return { error: "La meta debe ser mayor a cero" };
+  if (area !== null && (!Number.isFinite(area) || area <= 0))
+    return { error: "El área debe ser mayor a cero" };
+  if (plazo !== null && (!Number.isInteger(plazo) || plazo < 1 || plazo > 120))
+    return { error: "El plazo debe ir entre 1 y 120 meses" };
+
+  const prefijoDoc = `${carpetaDe(did)}/`;
+  const crudos = Array.isArray(body.documentos) ? body.documentos : [];
+  if (crudos.length > 12) return { error: "Máximo 12 documentos" };
+
+  const documentos: Documento[] = [];
+  for (const d of crudos as Record<string, unknown>[]) {
+    const ruta = String(d?.ruta ?? "");
+    const tipoDoc = String(d?.tipo ?? "otro");
+    if (!ruta.startsWith(prefijoDoc)) return { error: "Documento no válido" };
+    if (!TIPOS_DOCUMENTO.some((t) => t.id === tipoDoc))
+      return { error: "Tipo de documento inválido" };
+    documentos.push({
+      tipo: tipoDoc,
+      nombre: String(d?.nombre ?? "documento").slice(0, 120),
+      ruta,
+      bytes: Number(d?.bytes ?? 0),
+      mime: String(d?.mime ?? ""),
+      subido_at: String(d?.subido_at ?? new Date().toISOString()),
+    });
+  }
+
+  const prefijoImg = prefijoFotos(did);
+  const fotos = Array.isArray(body.imagenes) ? body.imagenes : [];
+  if (fotos.length > MAX_FOTOS)
+    return { error: `Máximo ${MAX_FOTOS} fotos` };
+  const imagenes: string[] = [];
+  for (const url of fotos) {
+    if (typeof url !== "string" || !url.startsWith(prefijoImg))
+      return { error: "Foto no válida" };
+    imagenes.push(url);
+  }
+
+  return {
+    datos: {
+      titulo,
+      descripcion,
+      tipo,
+      proponente,
+      estado_obra: estadoObra,
+      estado_detalle: texto(body.estado_detalle) || null,
+      barrio: texto(body.barrio) || null,
+      direccion: texto(body.direccion) || null,
+      area_m2: area,
+      plazo_meses: plazo,
+      meta_cop: Math.round(meta),
+      documentos,
+      imagenes,
+    },
+  };
+}
+
+/** Qué le falta a una propuesta para poder mandarse a revisión. */
+export function faltaParaRevision(p: {
+  documentos?: Documento[] | null;
+}): string | null {
+  const docs = p.documentos ?? [];
+  if (!docs.some((d) => SOPORTES_TECNICOS.includes(d.tipo)))
+    return "Adjunta al menos un soporte técnico (peritaje, avalúo o evaluación del espacio).";
+  return null;
+}

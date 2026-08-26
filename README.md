@@ -66,6 +66,37 @@ Primera corrida real: **1.536 listings** activos, **215 barrios**.
 Proyecto Supabase `cuadra` (`ffjvykbpqlrseskxuccq`, us-east-1), migración aplicada.
 App verificada end-to-end en local: tablero y resultados con datos reales.
 
+## Revisar proyectos (a mano, por ahora)
+No hay panel de admin a propósito: con menos de cinco propuestas no compensa
+construirlo, y hacerlo en SQL obliga a mirar cada una. El proponente mueve su
+borrador a `en_revision` desde la app; de ahí en adelante es manual.
+
+```sql
+-- La cola: lo que espera respuesta, lo más viejo primero.
+select id, titulo, barrio, meta_cop, enviado_revision_at, documentos
+  from proyectos where estado = 'en_revision' order by enviado_revision_at;
+
+-- Aprobar → sale a la vitrina y a /proyecto/<id>
+update proyectos set estado = 'publicado', revisado_at = now(),
+       revisado_por = 'william', nota_revision = null
+ where id = '...';
+
+-- Pedir ajustes → la nota se le muestra al proponente, que corrige y reenvía
+update proyectos set estado = 'rechazado', revisado_at = now(),
+       revisado_por = 'william',
+       nota_revision = 'El presupuesto no cuadra con la meta: ...'
+ where id = '...';
+
+-- KYC: sin aprobar, la persona puede preparar borradores pero no publicar
+select privy_did, tipo_documento, documento, nombre, apellido, estado from kyc;
+update kyc set estado = 'aprobado', revisado_at = now() where privy_did = '...';
+```
+
+Los soportes (peritajes, avalúos) están en el bucket privado `soportes`; se
+abren desde el dashboard de Supabase o con una URL firmada. Las fotos del
+proyecto viven en el bucket público `proyectos` y son las únicas que salen en
+la vitrina.
+
 ## Roadmap corto
 - [ ] OAuth de MercadoLibre para reactivar esa fuente (hoy 403)
 - [ ] Limpiar `title` en `fr_parse_page`: hoy guarda el texto crudo del ancla y
@@ -74,3 +105,6 @@ App verificada end-to-end en local: tablero y resultados con datos reales.
 - [ ] Yield bruto por barrio (mediana venta $/m² ÷ mediana arriendo $/m²)
 - [ ] Mapa por comuna
 - [ ] Alertas por email al bajar de precio (Privy email + cron)
+- [ ] Panel de revisión (cuando las propuestas no quepan en una consulta)
+- [ ] Aportes de verdad: hoy `recaudado_cop` no lo escribe nadie
+- [ ] KYC contra la Registraduría y cifrar `kyc.documento` en reposo

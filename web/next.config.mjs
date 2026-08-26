@@ -9,6 +9,8 @@ export default {
     remotePatterns: [
       { protocol: "https", hostname: "**.infocasas.com.uy" },
       { protocol: "https", hostname: "s3.amazonaws.com" },
+      // Fotos de proyectos: bucket público de Supabase.
+      { protocol: "https", hostname: "*.supabase.co" },
     ],
     // Los portales rotan de CDN; una fuente nueva no debe tumbar la página.
     // Next devuelve 400 en un host no permitido y el onError de la tarjeta

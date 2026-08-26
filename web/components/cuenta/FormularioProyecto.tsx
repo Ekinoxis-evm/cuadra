@@ -4,6 +4,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import Pasos, { type Paso } from "@/components/Pasos";
 import Campo, { claseCampo } from "@/components/Campo";
 import Soportes from "./Soportes";
+import Fotos from "./Fotos";
 import { fmtCOP } from "@/lib/types";
 import {
   ESTADOS_OBRA,
@@ -11,6 +12,7 @@ import {
   TIPOS,
   etiquetaDocumento,
   etiquetaEstadoObra,
+  faltaParaRevision,
   type Documento,
 } from "@/lib/proyectos";
 
@@ -37,8 +39,8 @@ const PASOS: Paso[] = [
   },
   {
     id: "soportes",
-    titulo: "Soportes",
-    nota: "Peritajes, avalúos y evaluaciones recientes. Son opcionales, pero un proyecto con soportes se revisa mucho más rápido.",
+    titulo: "Fotos y soportes",
+    nota: "Las fotos se ven en la vitrina; los peritajes, avalúos y evaluaciones solo los ve quien revisa.",
   },
   {
     id: "plata",
@@ -58,28 +60,51 @@ function Fila({ k, v }: { k: string; v: React.ReactNode }) {
   );
 }
 
+/** Lo que hace falta para reabrir una propuesta ya guardada. */
+export interface ProyectoEditable {
+  id: string;
+  titulo: string;
+  descripcion: string | null;
+  tipo: string;
+  proponente: string;
+  barrio: string | null;
+  direccion: string | null;
+  estado_obra: string | null;
+  estado_detalle: string | null;
+  area_m2: number | null;
+  plazo_meses: number | null;
+  meta_cop: number | null;
+  documentos: Documento[] | null;
+  imagenes: string[] | null;
+}
+
 export default function FormularioProyecto({
   onListo,
   onCancelar,
+  proyecto,
 }: {
   onListo: () => void;
   onCancelar?: () => void;
+  /** Si viene, se edita esa propuesta en vez de crear una nueva. */
+  proyecto?: ProyectoEditable;
 }) {
   const { getAccessToken } = usePrivy();
+  const editando = !!proyecto;
   const [paso, setPaso] = useState(0);
 
-  const [titulo, setTitulo] = useState("");
-  const [descripcion, setDescripcion] = useState("");
-  const [tipo, setTipo] = useState<string>("reconstruccion");
-  const [proponente, setProponente] = useState<string>("persona");
-  const [barrio, setBarrio] = useState("");
-  const [direccion, setDireccion] = useState("");
-  const [estadoObra, setEstadoObra] = useState("");
-  const [estadoDetalle, setEstadoDetalle] = useState("");
-  const [area, setArea] = useState("");
-  const [plazo, setPlazo] = useState("");
-  const [meta, setMeta] = useState("");
-  const [docs, setDocs] = useState<Documento[]>([]);
+  const [titulo, setTitulo] = useState(proyecto?.titulo ?? "");
+  const [descripcion, setDescripcion] = useState(proyecto?.descripcion ?? "");
+  const [tipo, setTipo] = useState<string>(proyecto?.tipo ?? "reconstruccion");
+  const [proponente, setProponente] = useState<string>(proyecto?.proponente ?? "persona");
+  const [barrio, setBarrio] = useState(proyecto?.barrio ?? "");
+  const [direccion, setDireccion] = useState(proyecto?.direccion ?? "");
+  const [estadoObra, setEstadoObra] = useState(proyecto?.estado_obra ?? "");
+  const [estadoDetalle, setEstadoDetalle] = useState(proyecto?.estado_detalle ?? "");
+  const [area, setArea] = useState(proyecto?.area_m2 ? String(proyecto.area_m2) : "");
+  const [plazo, setPlazo] = useState(proyecto?.plazo_meses ? String(proyecto.plazo_meses) : "");
+  const [meta, setMeta] = useState(proyecto?.meta_cop ? String(proyecto.meta_cop) : "");
+  const [docs, setDocs] = useState<Documento[]>(proyecto?.documentos ?? []);
+  const [fotos, setFotos] = useState<string[]>(proyecto?.imagenes ?? []);
 
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -123,8 +148,10 @@ export default function FormularioProyecto({
     setEnviando(true);
     try {
       const token = await getAccessToken();
-      const r = await fetch("/api/proyectos", {
-        method: "POST",
+      const r = await fetch(
+        editando ? `/api/proyectos/${proyecto!.id}` : "/api/proyectos",
+        {
+        method: editando ? "PATCH" : "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           titulo,
@@ -138,11 +165,13 @@ export default function FormularioProyecto({
           area_m2: area || null,
           plazo_meses: plazo || null,
           documentos: docs,
+          imagenes: fotos,
           meta_cop: Number(meta),
         }),
-      });
+      },
+      );
       const j = await r.json();
-      if (!r.ok) throw new Error(j.error ?? "No se pudo crear");
+      if (!r.ok) throw new Error(j.error ?? "No se pudo guardar");
       onListo();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Algo falló");
@@ -155,10 +184,13 @@ export default function FormularioProyecto({
     <form onSubmit={enviar} className="max-w-lg space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 className="font-semibold">Nuevo proyecto</h3>
+          <h3 className="font-semibold">
+            {editando ? "Editar propuesta" : "Nuevo proyecto"}
+          </h3>
           <p className="mono text-[11px] text-[var(--muted)] mt-1.5 leading-relaxed">
-            Queda como borrador. Sale a la vitrina pública solo después de la
-            revisión, y hasta entonces no recibe aportes.
+            {editando
+              ? "Vuelve a quedar como borrador. Cuando esté lista, la mandas a revisión desde la lista."
+              : "Queda como borrador. Sale a la vitrina pública solo después de la revisión, y hasta entonces no recibe aportes."}
           </p>
         </div>
         {onCancelar && (
@@ -377,12 +409,17 @@ export default function FormularioProyecto({
         <div className="space-y-5">
           <div className="border rule p-3 bg-[var(--petrol-2)]">
             <p className="mono text-[11px] text-[var(--muted)] leading-relaxed">
-              Todo esto es opcional para guardar el borrador, pero la revisión
-              pide al menos un soporte técnico antes de publicar. Los archivos
-              son privados: no salen en la vitrina, solo los ve quien revisa.
+              Puedes guardar el borrador sin nada de esto, pero para mandarlo a
+              revisión hace falta al menos un soporte técnico: peritaje, avalúo
+              o evaluación del espacio.
             </p>
           </div>
-          <Soportes docs={docs} onCambio={setDocs} />
+
+          <Fotos fotos={fotos} onCambio={setFotos} />
+
+          <div className="border-t rule pt-5">
+            <Soportes docs={docs} onCambio={setDocs} />
+          </div>
         </div>
       )}
 
@@ -452,7 +489,16 @@ export default function FormularioProyecto({
                   : "ninguno"
               }
             />
+            <Fila k="fotos" v={fotos.length ? `${fotos.length}` : "ninguna"} />
           </div>
+
+          {/* Se guarda igual, pero que no sea una sorpresa al mandarla. */}
+          {faltaParaRevision({ documentos: docs }) && (
+            <p className="mono text-[11px] text-[var(--muted)] leading-relaxed">
+              Se guarda como borrador, pero todavía no se puede mandar a
+              revisión: {faltaParaRevision({ documentos: docs })!.toLowerCase()}
+            </p>
+          )}
         </div>
       )}
 
@@ -487,7 +533,11 @@ export default function FormularioProyecto({
             disabled={enviando || !completo[3]}
             className="mono text-xs px-5 py-3 bg-[var(--solar)] text-[var(--petrol)] font-semibold disabled:opacity-40 disabled:bg-transparent disabled:text-[var(--muted)] disabled:border disabled:rule"
           >
-            {enviando ? "creando…" : "GUARDAR BORRADOR"}
+            {enviando
+              ? "guardando…"
+              : editando
+                ? "GUARDAR CAMBIOS"
+                : "GUARDAR BORRADOR"}
           </button>
         )}
       </div>

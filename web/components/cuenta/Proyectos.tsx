@@ -1,5 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
 import { usePrivy } from "@privy-io/react-auth";
 import FormularioKYC from "./FormularioKYC";
 import FormularioProyecto from "./FormularioProyecto";
@@ -11,6 +13,7 @@ import {
   etiquetaDocumento,
   etiquetaEstadoObra,
   etiquetaTipo,
+  faltaParaRevision,
   type Documento,
 } from "@/lib/proyectos";
 
@@ -26,108 +29,195 @@ interface Proyecto {
   tipo: string;
   proponente: string;
   barrio: string | null;
+  direccion: string | null;
   estado_obra: string | null;
+  estado_detalle: string | null;
   area_m2: number | null;
   plazo_meses: number | null;
   documentos: Documento[] | null;
+  imagenes: string[] | null;
   meta_cop: number | null;
   recaudado_cop: number;
   estado: string;
+  nota_revision: string | null;
 }
 
 const ETIQUETA_ESTADO: Record<string, string> = {
   borrador: "borrador",
   en_revision: "en revisión",
   publicado: "publicado",
-  rechazado: "rechazado",
+  rechazado: "necesita ajustes",
   cerrado: "cerrado",
 };
 
 /** Qué le falta a este proyecto para avanzar, dicho sin rodeos. */
 const QUE_SIGUE: Record<string, string> = {
-  borrador: "Guardado. Lo revisamos y te escribimos si falta algo.",
-  en_revision: "En revisión. Todavía no recibe aportes.",
+  borrador: "Guardado. Cuando esté listo, mándalo a revisión.",
+  en_revision: "Lo estamos revisando. Todavía no recibe aportes.",
   publicado: "Público en la vitrina. Ya puede recibir aportes.",
-  rechazado: "No pasó la revisión. Escríbenos para saber qué ajustar.",
+  rechazado: "Corrige lo que te pedimos y vuelve a mandarlo.",
   cerrado: "Cerrado.",
 };
 
 /** Los tres tramos por los que pasa un proyecto ya creado. */
 const TRAMOS_PROYECTO = ["borrador", "en_revision", "publicado"];
 
-function Tarjeta({ p, propio }: { p: Proyecto; propio?: boolean }) {
+function Tarjeta({
+  p,
+  propio,
+  onEditar,
+  onEnviar,
+  ocupado,
+}: {
+  p: Proyecto;
+  propio?: boolean;
+  onEditar?: () => void;
+  onEnviar?: () => void;
+  ocupado?: boolean;
+}) {
   const pct = p.meta_cop ? Math.min(100, (p.recaudado_cop / p.meta_cop) * 100) : 0;
   const avance = TRAMOS_PROYECTO.indexOf(p.estado);
   const docs = p.documentos ?? [];
+  const portada = p.imagenes?.[0];
+  const falta = faltaParaRevision({ documentos: docs });
+  const editable = ["borrador", "rechazado"].includes(p.estado);
 
   return (
-    <article className="border rule p-4 space-y-2.5">
-      <div className="flex items-start justify-between gap-3">
-        <p className="text-sm font-medium leading-snug">{p.titulo}</p>
-        <span
-          className={`mono text-[10px] shrink-0 ${
-            p.estado === "publicado"
-              ? "text-[var(--alza)]"
-              : p.estado === "rechazado"
-                ? "text-[var(--solar)]"
-                : "text-[var(--muted)]"
-          }`}
-        >
-          {ETIQUETA_ESTADO[p.estado] ?? p.estado}
-        </span>
-      </div>
-
-      <p className="mono text-[11px] text-[var(--muted)]">
-        {[
-          etiquetaTipo(p.tipo),
-          etiquetaEstadoObra(p.estado_obra),
-          p.barrio,
-          p.area_m2 ? `${p.area_m2} m²` : null,
-          p.plazo_meses ? `${p.plazo_meses} meses` : null,
-        ]
-          .filter(Boolean)
-          .join(" · ")}
-      </p>
-
-      {/* Avance del propio proyecto: dónde va y qué falta. En la vitrina no
-          hace falta porque todo lo público ya llegó al final. */}
-      {propio && avance >= 0 && (
-        <div className="flex items-center gap-1.5 pt-0.5">
-          {TRAMOS_PROYECTO.map((t, i) => (
-            <span
-              key={t}
-              className={`h-0.5 flex-1 ${
-                i <= avance ? "bg-[var(--solar)]" : "bg-[var(--muted)]/25"
-              }`}
-            />
-          ))}
+    <article className="border rule">
+      {portada && (
+        <Image
+          src={portada}
+          alt=""
+          width={640}
+          height={200}
+          className="w-full h-32 object-cover border-b rule"
+        />
+      )}
+      <div className="p-4 space-y-2.5">
+        <div className="flex items-start justify-between gap-3">
+          {p.estado === "publicado" ? (
+            <Link
+              href={`/proyecto/${p.id}`}
+              className="text-sm font-medium leading-snug hover:text-[var(--solar)]"
+            >
+              {p.titulo}
+            </Link>
+          ) : (
+            <p className="text-sm font-medium leading-snug">{p.titulo}</p>
+          )}
+          <span
+            className={`mono text-[10px] shrink-0 ${
+              p.estado === "publicado"
+                ? "text-[var(--alza)]"
+                : p.estado === "rechazado"
+                  ? "text-[var(--solar)]"
+                  : "text-[var(--muted)]"
+            }`}
+          >
+            {ETIQUETA_ESTADO[p.estado] ?? p.estado}
+          </span>
         </div>
-      )}
-      {propio && (
-        <p className="mono text-[10px] text-[var(--muted)] leading-relaxed">
-          {QUE_SIGUE[p.estado] ?? ""}
-        </p>
-      )}
 
-      {propio && (
-        <p className="mono text-[10px] text-[var(--muted)]">
-          {docs.length
-            ? `soportes: ${docs.map((d) => etiquetaDocumento(d.tipo)).join(", ")}`
-            : "sin soportes adjuntos · la revisión pide al menos uno"}
+        <p className="mono text-[11px] text-[var(--muted)]">
+          {[
+            etiquetaTipo(p.tipo),
+            etiquetaEstadoObra(p.estado_obra),
+            p.barrio,
+            p.area_m2 ? `${p.area_m2} m²` : null,
+            p.plazo_meses ? `${p.plazo_meses} meses` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         </p>
-      )}
 
-      {p.meta_cop && (
-        <div className="space-y-1 pt-1">
-          <div className="h-0.5 bg-[var(--muted)]/30">
-            <div className="h-full bg-[var(--solar)]" style={{ width: `${pct}%` }} />
+        {/* Avance del propio proyecto: dónde va y qué falta. En la vitrina no
+            hace falta porque todo lo público ya llegó al final. */}
+        {propio && avance >= 0 && (
+          <div className="flex items-center gap-1.5 pt-0.5">
+            {TRAMOS_PROYECTO.map((t, i) => (
+              <span
+                key={t}
+                className={`h-0.5 flex-1 ${
+                  i <= avance ? "bg-[var(--solar)]" : "bg-[var(--muted)]/25"
+                }`}
+              />
+            ))}
           </div>
-          <p className="mono text-[11px]">
-            {fmtCOP(p.recaudado_cop)}{" "}
-            <span className="text-[var(--muted)]">de {fmtCOP(p.meta_cop)}</span>
+        )}
+        {propio && (
+          <p className="mono text-[10px] text-[var(--muted)] leading-relaxed">
+            {QUE_SIGUE[p.estado] ?? ""}
           </p>
-        </div>
-      )}
+        )}
+
+        {/* La respuesta de la revisión, textual. Sin esto, "te escribimos si
+            falta algo" era una promesa que la app no podía cumplir. */}
+        {propio && p.nota_revision && (
+          <div className="border-l-2 border-[var(--solar)] pl-3 py-1">
+            <p className="mono text-[10px] text-[var(--solar)]">
+              LO QUE PEDIMOS AJUSTAR
+            </p>
+            <p className="mono text-[11px] mt-1 leading-relaxed">
+              {p.nota_revision}
+            </p>
+          </div>
+        )}
+
+        {propio && (
+          <p className="mono text-[10px] text-[var(--muted)]">
+            {docs.length
+              ? `soportes: ${docs.map((d) => etiquetaDocumento(d.tipo)).join(", ")}`
+              : "sin soportes adjuntos"}
+            {p.imagenes?.length ? ` · ${p.imagenes.length} fotos` : " · sin fotos"}
+          </p>
+        )}
+
+        {p.meta_cop && (
+          <div className="space-y-1 pt-1">
+            <div className="h-0.5 bg-[var(--muted)]/30">
+              <div className="h-full bg-[var(--solar)]" style={{ width: `${pct}%` }} />
+            </div>
+            <p className="mono text-[11px]">
+              {fmtCOP(p.recaudado_cop)}{" "}
+              <span className="text-[var(--muted)]">de {fmtCOP(p.meta_cop)}</span>
+            </p>
+          </div>
+        )}
+
+        {propio && editable && (
+          <div className="flex items-center gap-2 pt-2 flex-wrap">
+            <button
+              onClick={onEditar}
+              disabled={ocupado}
+              className="mono text-[11px] border rule px-3 py-1.5 hover:bg-[var(--petrol-2)] disabled:opacity-40"
+            >
+              editar
+            </button>
+            <button
+              onClick={onEnviar}
+              disabled={ocupado || !!falta}
+              title={falta ?? undefined}
+              className="mono text-[11px] px-3 py-1.5 bg-[var(--solar)] text-[var(--petrol)] font-semibold disabled:opacity-40 disabled:bg-transparent disabled:text-[var(--muted)] disabled:border disabled:rule"
+            >
+              {ocupado ? "enviando…" : "ENVIAR A REVISIÓN"}
+            </button>
+            {falta && (
+              <p className="mono text-[10px] text-[var(--muted)] leading-relaxed basis-full">
+                {falta}
+              </p>
+            )}
+          </div>
+        )}
+
+        {propio && p.estado === "publicado" && (
+          <Link
+            href={`/proyecto/${p.id}`}
+            className="mono text-[11px] border rule px-3 py-1.5 hover:bg-[var(--petrol-2)] inline-block mt-2"
+          >
+            ver la página pública
+          </Link>
+        )}
+      </div>
     </article>
   );
 }
@@ -147,10 +237,14 @@ export default function Proyectos() {
   const [publicos, setPublicos] = useState<Proyecto[]>([]);
   const [cargando, setCargando] = useState(true);
   const [vista, setVista] = useState<"lista" | "kyc" | "nuevo">("lista");
+  const [editando, setEditando] = useState<Proyecto | null>(null);
+  const [ocupado, setOcupado] = useState<string | null>(null);
+  const [privyLento, setPrivyLento] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const cargar = useCallback(async () => {
     setCargando(true);
-    const token = authenticated ? await getAccessToken() : null;
+    const token = ready && authenticated ? await getAccessToken() : null;
     const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
 
     const [rp, rpr] = await Promise.all([
@@ -164,17 +258,83 @@ export default function Proyectos() {
       setPublicos(j.publicos ?? []);
     }
     setCargando(false);
-  }, [authenticated, getAccessToken]);
+  }, [ready, authenticated, getAccessToken]);
 
-  useEffect(() => { if (ready) cargar(); }, [ready, cargar]);
+  // Corre sin esperar a Privy: la vitrina es pública y no necesita sesión.
+  useEffect(() => { cargar(); }, [cargar]);
 
-  if (!ready || cargando) return <p className="mono text-xs text-[var(--muted)]">···</p>;
+  // Si Privy no arranca —está caído, bloqueado, o el origen no está en su
+  // lista— la pestaña se quedaba en "···" para siempre, escondiendo una
+  // vitrina que no necesita sesión para nada. A los cinco segundos se sigue
+  // sin él.
+  useEffect(() => {
+    if (ready) return;
+    const t = setTimeout(() => setPrivyLento(true), 5000);
+    return () => clearTimeout(t);
+  }, [ready]);
+
+  async function enviarARevision(p: Proyecto) {
+    setError(null);
+    setOcupado(p.id);
+    try {
+      const token = await getAccessToken();
+      const r = await fetch(`/api/proyectos/${p.id}/revision`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error ?? "No se pudo enviar");
+      await cargar();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Algo falló");
+    } finally {
+      setOcupado(null);
+    }
+  }
+
+  if ((!ready && !privyLento) || cargando)
+    return <p className="mono text-xs text-[var(--muted)]">···</p>;
+
+  // Sin sesión se ve la vitrina completa: es pública, tiene página propia por
+  // proyecto y es lo que alguien abre cuando le comparten un enlace. La cuenta
+  // solo hace falta para proponer.
   if (!authenticated)
     return (
-      <EntrarCTA
-        mensaje="Los proyectos tokenizados reconstruyen o levantan vivienda con plata de varios. Para proponer uno o participar hace falta una cuenta."
-        nota="Con tu correo o Google. Mirar la vitrina no exige nada; proponer sí."
-      />
+      <div className="max-w-2xl space-y-8">
+        <div>
+          <h2 className="font-semibold">Proyectos tokenizados</h2>
+          <p className="text-sm text-[var(--muted)] mt-2 leading-relaxed">
+            Reconstruir una vivienda o levantar una nueva, financiada entre
+            varios. Personas, empresas y entidades públicas pueden proponer y
+            participar.
+          </p>
+        </div>
+
+        <div>
+          <h3 className="mono text-[11px] text-[var(--muted)] mb-2">VITRINA</h3>
+          {publicos.length ? (
+            <div className="space-y-3">
+              {publicos.map((p) => <Tarjeta key={p.id} p={p} />)}
+            </div>
+          ) : (
+            <p className="mono text-xs text-[var(--muted)]">
+              Todavía no hay proyectos publicados.
+            </p>
+          )}
+        </div>
+
+        {ready ? (
+          <EntrarCTA
+            mensaje="Para proponer un proyecto o participar en uno hace falta una cuenta. Mirar la vitrina no."
+            nota="Con tu correo o Google. Proponer exige además verificar tu identidad."
+          />
+        ) : (
+          <p className="mono text-[11px] text-[var(--muted)] leading-relaxed border rule p-4">
+            No pudimos cargar tu sesión. La vitrina se ve igual; para proponer
+            un proyecto, recarga la página.
+          </p>
+        )}
+      </div>
     );
 
   if (vista === "kyc")
@@ -184,17 +344,18 @@ export default function Proyectos() {
         onCancelar={() => setVista("lista")}
       />
     );
-  if (vista === "nuevo")
+  if (vista === "nuevo" || editando)
     return (
       <FormularioProyecto
-        onListo={() => { setVista("lista"); cargar(); }}
-        onCancelar={() => setVista("lista")}
+        proyecto={editando ?? undefined}
+        onListo={() => { setVista("lista"); setEditando(null); cargar(); }}
+        onCancelar={() => { setVista("lista"); setEditando(null); }}
       />
     );
 
   // En qué tramo de la ruta está esta cuenta.
   const publicado = mios.some((p) => p.estado === "publicado");
-  const enCurso = mios.some((p) => ["borrador", "en_revision"].includes(p.estado));
+  const enCurso = mios.some((p) => ["borrador", "en_revision", "rechazado"].includes(p.estado));
   const tramo = !kyc ? 0 : publicado ? 3 : enCurso ? 2 : 1;
 
   return (
@@ -270,11 +431,24 @@ export default function Proyectos() {
         )}
       </div>
 
+      {error && (
+        <p className="mono text-[11px] text-[var(--solar)]" role="alert">{error}</p>
+      )}
+
       {!!mios.length && (
         <div>
           <h3 className="mono text-[11px] text-[var(--muted)] mb-2">TUS PROYECTOS</h3>
           <div className="space-y-3">
-            {mios.map((p) => <Tarjeta key={p.id} p={p} propio />)}
+            {mios.map((p) => (
+              <Tarjeta
+                key={p.id}
+                p={p}
+                propio
+                ocupado={ocupado === p.id}
+                onEditar={() => setEditando(p)}
+                onEnviar={() => enviarARevision(p)}
+              />
+            ))}
           </div>
         </div>
       )}

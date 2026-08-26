@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { didDe, noAutorizado } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
-import { MAX_BYTES_DOC, MIMES_DOC, TIPOS_DOCUMENTO } from "@/lib/proyectos";
+import { MAX_BYTES_DOC, MIMES_DOC, TIPOS_DOCUMENTO, carpetaDe } from "@/lib/proyectos";
 
 /**
  * Soportes de un proyecto: peritajes, avalúos, evaluaciones del espacio.
@@ -25,9 +25,6 @@ const EXTENSION: Record<string, string> = {
   "image/png": "png",
   "image/webp": "webp",
 };
-
-/** El did de Privy trae ':' y las llaves del storage se llevan mal con eso. */
-const carpetaDe = (did: string) => did.replace(/[^a-zA-Z0-9]/g, "-");
 
 /** GET ?ruta=… → URL firmada de 5 minutos para que el dueño lo abra. */
 export async function GET(req: NextRequest) {
