@@ -187,6 +187,44 @@ export const carpetaDe = (did: string) => did.replace(/[^a-zA-Z0-9]/g, "-");
 export const prefijoFotos = (did: string) =>
   `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/proyectos/${carpetaDe(did)}/`;
 
+/**
+ * Nombres de archivo que aceptamos: los que generamos nosotros, un uuid y su
+ * extensión. Nada más.
+ *
+ * Comprobar solo que la ruta EMPIECE por la carpeta del usuario no alcanzaba:
+ * `mi-carpeta/../otra-carpeta/peritaje.pdf` pasa ese filtro, y el storage de
+ * Supabase normaliza el `..` al firmar la URL — comprobado contra el proyecto
+ * real: se descargaba el peritaje de otra persona, con su cédula y la
+ * dirección del inmueble dentro. Anclar el nombre completo cierra de una vez
+ * el `..`, las barras extra, las rutas absolutas y el %2e%2e.
+ */
+const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const NOMBRE_SOPORTE = new RegExp(`^${UUID}\\.(pdf|jpg|png|webp)$`, "i");
+const NOMBRE_FOTO = new RegExp(`^${UUID}\\.(jpg|png|webp)$`, "i");
+
+/**
+ * Valida una ruta del bucket privado y devuelve la ruta canónica, o null.
+ * Se construye de cero a partir de las piezas verificadas: lo que entró por la
+ * red no se vuelve a usar tal cual.
+ */
+export function rutaSoporteDe(ruta: string, did: string): string | null {
+  const carpeta = carpetaDe(did);
+  const partes = String(ruta).split("/");
+  if (partes.length !== 2) return null;
+  if (partes[0] !== carpeta) return null;
+  if (!NOMBRE_SOPORTE.test(partes[1])) return null;
+  return `${carpeta}/${partes[1]}`;
+}
+
+/** Igual para una foto pública: de la URL entera se saca solo el nombre. */
+export function rutaFotoDe(url: string, did: string): string | null {
+  const prefijo = prefijoFotos(did);
+  if (!String(url).startsWith(prefijo)) return null;
+  const nombre = String(url).slice(prefijo.length);
+  if (!NOMBRE_FOTO.test(nombre)) return null;
+  return `${carpetaDe(did)}/${nombre}`;
+}
+
 export interface DatosProyecto {
   titulo: string;
   descripcion: string;
@@ -251,15 +289,14 @@ export function validarProyecto(
   if (plazo !== null && (!Number.isInteger(plazo) || plazo < 1 || plazo > 120))
     return { error: "El plazo debe ir entre 1 y 120 meses" };
 
-  const prefijoDoc = `${carpetaDe(did)}/`;
   const crudos = Array.isArray(body.documentos) ? body.documentos : [];
   if (crudos.length > 12) return { error: "Máximo 12 documentos" };
 
   const documentos: Documento[] = [];
   for (const d of crudos as Record<string, unknown>[]) {
-    const ruta = String(d?.ruta ?? "");
+    const ruta = rutaSoporteDe(String(d?.ruta ?? ""), did);
     const tipoDoc = String(d?.tipo ?? "otro");
-    if (!ruta.startsWith(prefijoDoc)) return { error: "Documento no válido" };
+    if (!ruta) return { error: "Documento no válido" };
     if (!TIPOS_DOCUMENTO.some((t) => t.id === tipoDoc))
       return { error: "Tipo de documento inválido" };
     documentos.push({
@@ -272,13 +309,12 @@ export function validarProyecto(
     });
   }
 
-  const prefijoImg = prefijoFotos(did);
   const fotos = Array.isArray(body.imagenes) ? body.imagenes : [];
   if (fotos.length > MAX_FOTOS)
     return { error: `Máximo ${MAX_FOTOS} fotos` };
   const imagenes: string[] = [];
   for (const url of fotos) {
-    if (typeof url !== "string" || !url.startsWith(prefijoImg))
+    if (typeof url !== "string" || !rutaFotoDe(url, did))
       return { error: "Foto no válida" };
     imagenes.push(url);
   }

@@ -1,7 +1,13 @@
 import { NextRequest } from "next/server";
 import { didDe, noAutorizado } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
-import { MAX_BYTES_DOC, MIMES_DOC, TIPOS_DOCUMENTO, carpetaDe } from "@/lib/proyectos";
+import {
+  MAX_BYTES_DOC,
+  MIMES_DOC,
+  TIPOS_DOCUMENTO,
+  carpetaDe,
+  rutaSoporteDe,
+} from "@/lib/proyectos";
 
 /**
  * Soportes de un proyecto: peritajes, avalúos, evaluaciones del espacio.
@@ -31,8 +37,11 @@ export async function GET(req: NextRequest) {
   const userId = await didDe(req);
   if (!userId) return noAutorizado();
 
-  const ruta = req.nextUrl.searchParams.get("ruta") ?? "";
-  if (!ruta.startsWith(`${carpetaDe(userId)}/`))
+  // La ruta se reconstruye entera desde piezas validadas. Comprobar solo el
+  // prefijo dejaba pasar `mi-carpeta/../otra/peritaje.pdf`, y el storage
+  // resuelve ese `..` al firmar: era leer el peritaje de otra persona.
+  const ruta = rutaSoporteDe(req.nextUrl.searchParams.get("ruta") ?? "", userId);
+  if (!ruta)
     return Response.json({ error: "Ese documento no es tuyo" }, { status: 403 });
 
   const { data, error } = await supabaseAdmin()
@@ -102,8 +111,8 @@ export async function DELETE(req: NextRequest) {
   const userId = await didDe(req);
   if (!userId) return noAutorizado();
 
-  const ruta = req.nextUrl.searchParams.get("ruta") ?? "";
-  if (!ruta.startsWith(`${carpetaDe(userId)}/`))
+  const ruta = rutaSoporteDe(req.nextUrl.searchParams.get("ruta") ?? "", userId);
+  if (!ruta)
     return Response.json({ error: "Ese documento no es tuyo" }, { status: 403 });
 
   const db = supabaseAdmin();

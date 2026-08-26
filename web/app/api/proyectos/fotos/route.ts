@@ -5,7 +5,7 @@ import {
   MAX_BYTES_FOTO,
   MIMES_FOTO,
   carpetaDe,
-  prefijoFotos,
+  rutaFotoDe,
 } from "@/lib/proyectos";
 
 /**
@@ -69,13 +69,14 @@ export async function DELETE(req: NextRequest) {
   const userId = await didDe(req);
   if (!userId) return noAutorizado();
 
+  // Mismo criterio que en los soportes: del enlace se saca el nombre, se
+  // valida contra el patrón que generamos, y la ruta se arma de cero.
   const url = req.nextUrl.searchParams.get("url") ?? "";
-  const prefijo = prefijoFotos(userId);
-  if (!url.startsWith(prefijo))
+  const ruta = rutaFotoDe(url, userId);
+  if (!ruta)
     return Response.json({ error: "Esa foto no es tuya" }, { status: 403 });
 
   const db = supabaseAdmin();
-  const ruta = `${carpetaDe(userId)}/${url.slice(prefijo.length)}`;
   const { error } = await db.storage.from(BUCKET).remove([ruta]);
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
