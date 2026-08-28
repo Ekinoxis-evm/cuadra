@@ -61,3 +61,13 @@ export const fmtCOP = (n: number) =>
 /** Clave estable de un listing: la tabla usa (source, source_id) como PK. */
 export const claveListing = (l: Pick<Listing, "source" | "source_id">) =>
   `${l.source}:${l.source_id}`;
+
+/**
+ * Las respuestas del intake, guardadas tal cual las dio quien propone. Es un
+ * mapa abierto porque el set de preguntas depende del tipo de proponente y
+ * crece; las claves son los `id` de intake.ts y el esquema vive allá, no aquí.
+ */
+export type Respuestas = Record<
+  string,
+  string | number | boolean | null | undefined
+>;
