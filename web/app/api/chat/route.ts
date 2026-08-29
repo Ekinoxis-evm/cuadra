@@ -3,9 +3,10 @@ import Anthropic from "@anthropic-ai/sdk";
 import { PrivyClient } from "@privy-io/server-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import {
-  HERRAMIENTAS, MODELO, SISTEMA, buscarInmuebles, estadisticasBarrio,
+  HERRAMIENTAS, MODELO, SISTEMA, buscarInmuebles, conCache, estadisticasBarrio,
   guardarPreferencias, leerPreferencias,
 } from "@/lib/agente";
+import { registrarConsumo, saldo, sumarUso, usoVacio } from "@/lib/consumo";
 import type { Listing } from "@/lib/types";
 
 // El loop agéntico puede encadenar varias llamadas a herramientas.
@@ -50,6 +51,24 @@ export async function POST(req: NextRequest) {
 
   const db = supabaseAdmin();
   await db.from("profiles").upsert({ privy_did: userId });
+
+  // Se mira el saldo ANTES de llamar al modelo. Después no sirve de nada: para
+  // entonces la respuesta ya se generó y a nosotros ya nos la facturaron. No
+  // se reserva ni se estima el costo del turno — se corta solo cuando la bolsa
+  // ya está en cero, así que el último turno puede quedar debiendo unos pocos
+  // créditos. Cobrar por adelantado un turno cuyo tamaño no se conoce sería
+  // peor: descontaría de más en el caso común.
+  const { disponible } = await saldo(db, userId);
+  if (disponible <= 0)
+    return Response.json(
+      {
+        error: "Sin créditos",
+        detalle:
+          "Se acabaron los créditos de este mes. Se renuevan el primero, o " +
+          "puedes recargar.",
+      },
+      { status: 402 },
+    );
 
   // ---------------------------------------------------------- conversación
   let conversacionId = body.conversacionId;
@@ -113,6 +132,10 @@ export async function POST(req: NextRequest) {
     ...(memoria ? [{ type: "text" as const, text: memoria }] : []),
   ];
 
+  // Un turno son varias llamadas: el loop encadena hasta ocho vueltas. Se
+  // acumulan todas y se cobra una vez al final.
+  const uso = usoVacio();
+
   // ---------------------------------------------------------- stream SSE
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -133,10 +156,12 @@ export async function POST(req: NextRequest) {
               thinking: { type: "adaptive" },
               system,
               tools: HERRAMIENTAS,
-              messages,
+              messages: conCache(messages),
             })
             .on("text", (delta) => enviar("texto", delta))
             .finalMessage();
+
+          sumarUso(uso, MODELO, respuesta.usage);
 
           messages.push({ role: "assistant", content: respuesta.content });
           await db.from("mensajes").insert({
@@ -197,6 +222,25 @@ export async function POST(req: NextRequest) {
         const msg = e instanceof Error ? e.message : "Error desconocido";
         enviar("error", { mensaje: msg });
       } finally {
+        // En el finally y no en el try: si el loop se cae en la vuelta cinco,
+        // las cuatro primeras ya se facturaron. Cobrar solo los turnos que
+        // terminaron bien convierte cada error en gasto invisible.
+        if (uso.costo_usd > 0) {
+          try {
+            await registrarConsumo(db, userId, {
+              concepto: "chat",
+              modelo: MODELO,
+              uso,
+              referencia: conversacionId,
+            });
+            const s = await saldo(db, userId);
+            enviar("saldo", { disponible: s.disponible });
+          } catch {
+            // Que falle la contabilidad no puede tumbar una respuesta que el
+            // usuario ya recibió. Queda el hueco en `consumo` y se ve al
+            // cuadrar contra la factura real.
+          }
+        }
         controller.close();
       }
     },

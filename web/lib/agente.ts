@@ -262,3 +262,57 @@ export async function leerPreferencias(
     limpio,
   )}. No vuelvas a preguntar esto; confírmalo solo si parece desactualizado.`;
 }
+
+/**
+ * Puntos de caché sobre el historial.
+ *
+ * El prompt de sistema y las herramientas ya se cacheaban, pero eso es un
+ * prefijo fijo de unos 3.500 tokens: lo que crece turno a turno es el hilo, y
+ * el hilo se estaba reenviando entero a precio completo en cada vuelta del
+ * loop. En una sesión de quince turnos eso es la mayor parte de la factura.
+ *
+ * Dos marcas y no una. Con una sola, moverla hacia adelante en cada petición
+ * deja el prefijo nuevo sin escribir todavía y el viejo sin marcar, y se
+ * pierde el acierto justo cuando más historial hay. La de atrás es la que se
+ * lee; la de adelante escribe el tramo nuevo para el turno siguiente.
+ *
+ * Devuelve un arreglo nuevo: `messages` se persiste en la tabla `mensajes` y
+ * al rehidratar una conversación no queremos revivir marcas de caché viejas.
+ */
+export function conCache(
+  messages: Anthropic.MessageParam[],
+): Anthropic.MessageParam[] {
+  // Menos de dos mensajes no tiene prefijo que valga la pena cachear, y por
+  // debajo del mínimo cacheable la marca no hace nada salvo ocupar un cupo.
+  if (messages.length < 2) return messages;
+
+  const marcas = new Set<number>([messages.length - 1]);
+  // Unas dos vueltas atrás: es el prefijo que la petición anterior escribió.
+  if (messages.length >= 4) marcas.add(messages.length - 3);
+
+  return messages.map((m, i) => {
+    if (!marcas.has(i)) return m;
+
+    // El bloque va al final del contenido, así que el contenido tiene que ser
+    // bloques. Un `content` de texto plano se convierte.
+    const bloques: Anthropic.ContentBlockParam[] =
+      typeof m.content === "string"
+        ? [{ type: "text", text: m.content }]
+        : [...m.content];
+
+    if (!bloques.length) return m;
+
+    const ultimo = bloques[bloques.length - 1];
+    // `thinking` y `redacted_thinking` no aceptan cache_control; marcarlos es
+    // un 400 en mitad de la conversación.
+    if (ultimo.type === "thinking" || ultimo.type === "redacted_thinking")
+      return m;
+
+    bloques[bloques.length - 1] = {
+      ...ultimo,
+      cache_control: { type: "ephemeral" },
+    } as Anthropic.ContentBlockParam;
+
+    return { ...m, content: bloques };
+  });
+}
