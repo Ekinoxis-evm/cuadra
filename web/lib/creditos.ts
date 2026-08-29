@@ -8,11 +8,13 @@
  * la API, y el crédito se descuenta de ese rastro — no de una estimación.
  *
  * ------------------------------------------------------------------ la razón
- * El sostén del producto no es la evaluación, es la búsqueda. Medido sobre el
- * loop actual: evaluar un proyecto cuesta entre USD 0,17 y 0,51; una sesión de
- * chat de quince turnos, alrededor de USD 1,35 — cinco a ocho veces más. Los
- * créditos existen para acotar eso sin ponerle un muro a quien apenas está
- * probando, y el margen de los paquetes es lo que financia las obras.
+ * El sostén del producto no es la evaluación, es la búsqueda. Evaluar un
+ * proyecto cuesta entre USD 0,17 y 0,51. Una sesión de chat de doce turnos,
+ * medida contra la API con tamaños de mensaje reales, costaba USD 1,04 sin
+ * caché y cuesta USD 0,21 con él — 4,9 veces menos, sin tocar una coma del
+ * prompt. Aun así la búsqueda sigue siendo el gasto que manda, y por eso los
+ * créditos existen: para acotarla sin ponerle un muro a quien apenas está
+ * probando. El margen de los paquetes es lo que financia las obras.
  */
 
 import type Anthropic from "@anthropic-ai/sdk";
@@ -74,12 +76,17 @@ export const USD_POR_CREDITO = 0.01;
 export const creditosDe = (usd: number) => Math.ceil(usd / USD_POR_CREDITO);
 
 /**
- * Lo que cuesta cada cosa, en créditos, para mostrarlo antes de gastarlo.
- * Son promedios medidos, no topes: se cobra el consumo real.
+ * Lo que cuesta cada cosa, en créditos, para mostrarlo antes de gastarlo. Son
+ * promedios, no topes: se cobra el consumo real que reporta la API.
+ *
+ * Chat medido contra la API con el caché ya puesto: doce turnos por USD 0,21,
+ * o sea unos 2 créditos por turno. Se deja en 3 porque la medición usó turnos
+ * sin herramientas, y una búsqueda que devuelve listings engorda el hilo más
+ * rápido que la simulación.
  */
 export const COSTO_TIPICO = {
-  turno_chat: 4,
-  sesion_chat: 40,
+  turno_chat: 3,
+  sesion_chat: 25,
   evaluacion: 25,
   evaluacion_gris: 55,
 } as const;
