@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePrivy } from "@privy-io/react-auth";
 import FormularioKYC from "./FormularioKYC";
 import FormularioProyecto from "./FormularioProyecto";
+import IntakeConversacional from "./IntakeConversacional";
 import Pasos from "@/components/Pasos";
 import EntrarCTA from "@/components/EntrarCTA";
 import { fmtCOP } from "@/lib/types";
@@ -236,7 +237,7 @@ export default function Proyectos() {
   const [mios, setMios] = useState<Proyecto[]>([]);
   const [publicos, setPublicos] = useState<Proyecto[]>([]);
   const [cargando, setCargando] = useState(true);
-  const [vista, setVista] = useState<"lista" | "kyc" | "nuevo">("lista");
+  const [vista, setVista] = useState<"lista" | "kyc" | "nuevo" | "conversar">("lista");
   const [editando, setEditando] = useState<Proyecto | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [privyLento, setPrivyLento] = useState(false);
@@ -344,6 +345,23 @@ export default function Proyectos() {
         onCancelar={() => setVista("lista")}
       />
     );
+  // La entrevista es el camino principal para una propuesta nueva. El
+  // formulario sigue existiendo para editar y para quien prefiera llenarlo de
+  // corrido: obligar a conversar a quien ya sabe qué va en cada casilla es
+  // ponerle un trámite más largo, no uno mejor.
+  if (vista === "conversar")
+    return (
+      <div className="space-y-4">
+        <button
+          onClick={() => { setVista("lista"); cargar(); }}
+          className="mono text-[11px] text-[var(--muted)] hover:text-[var(--bone)]"
+        >
+          ← volver
+        </button>
+        <IntakeConversacional />
+      </div>
+    );
+
   if (vista === "nuevo" || editando)
     return (
       <FormularioProyecto
@@ -416,16 +434,24 @@ export default function Proyectos() {
               </p>
             </div>
             {kyc.estado !== "rechazado" && (
-              <button
-                onClick={() => setVista("nuevo")}
-                className={`mono text-xs px-4 py-2.5 ${
-                  mios.length
-                    ? "border rule hover:bg-[var(--petrol-2)]"
-                    : "bg-[var(--solar)] text-[var(--petrol)] font-semibold"
-                }`}
-              >
-                {mios.length ? "+ PROYECTO" : "DESCRIBIR MI PROYECTO"}
-              </button>
+              <div className="flex flex-col items-end gap-1.5">
+                <button
+                  onClick={() => setVista("conversar")}
+                  className={`mono text-xs px-4 py-2.5 ${
+                    mios.length
+                      ? "border rule hover:bg-[var(--petrol-2)]"
+                      : "bg-[var(--solar)] text-[var(--petrol)] font-semibold"
+                  }`}
+                >
+                  {mios.length ? "+ PROYECTO" : "CONTARME TU PROYECTO"}
+                </button>
+                <button
+                  onClick={() => setVista("nuevo")}
+                  className="mono text-[11px] text-[var(--muted)] hover:text-[var(--bone)]"
+                >
+                  o llenar el formulario
+                </button>
+              </div>
             )}
           </div>
         )}
