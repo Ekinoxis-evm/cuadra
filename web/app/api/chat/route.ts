@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
 import { PrivyClient } from "@privy-io/server-auth";
+import { anthropic } from "@/lib/anthropic";
 import { supabaseAdmin } from "@/lib/supabase";
 import {
   HERRAMIENTAS, MODELO, SISTEMA, buscarInmuebles, conCache, estadisticasBarrio,
@@ -16,8 +17,6 @@ const privy = new PrivyClient(
   process.env.NEXT_PUBLIC_PRIVY_APP_ID!,
   process.env.PRIVY_APP_SECRET!,
 );
-
-const anthropic = new Anthropic();
 
 /** Tope de vueltas del loop, por si el modelo se queda pidiendo herramientas. */
 const MAX_VUELTAS = 8;
