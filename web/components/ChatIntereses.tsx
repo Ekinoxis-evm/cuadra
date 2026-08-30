@@ -3,10 +3,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import Esfera, { type EstadoEsfera } from "./Esfera";
 import ListingCard from "./ListingCard";
+import TablaBarrios from "./TablaBarrios";
 import Markdown from "./Markdown";
 import { leerSSE } from "@/lib/sse";
 import { reconstruir } from "@/lib/historial";
-import type { Listing } from "@/lib/types";
+import type { BarrioStat, Listing } from "@/lib/types";
 import type { Turno } from "@/lib/historial";
 import EntrarCTA from "@/components/EntrarCTA";
 
@@ -26,6 +27,10 @@ export default function ChatIntereses() {
   const [conversacionId, setConversacionId] = useState<string | null>(null);
   const [hilos, setHilos] = useState<{ id: string; titulo: string | null; updated_at: string }[]>([]);
   const [cargandoHilo, setCargandoHilo] = useState(false);
+  // Los créditos existían y no se veían: la ruta ya mandaba el saldo y nadie
+  // lo escuchaba. Un contador que solo aparece cuando queda poco — mostrarlo
+  // siempre convierte cada pregunta en una decisión de gasto.
+  const [saldo, setSaldo] = useState<number | null>(null);
   const finRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -153,6 +158,19 @@ export default function ChatIntereses() {
             };
             return copia;
           });
+        } else if (evento === "barrios") {
+          setTurnos((prev) => {
+            const c = [...prev];
+            const ult = c[c.length - 1];
+            if (ult?.rol === "assistant")
+              c[c.length - 1] = {
+                ...ult,
+                barrios: [...(ult.barrios ?? []), ...(dato as BarrioStat[])],
+              };
+            return c;
+          });
+        } else if (evento === "saldo") {
+          setSaldo((dato as { disponible: number }).disponible);
         } else if (evento === "error") {
           throw new Error((dato as { mensaje: string }).mensaje);
         }
@@ -203,6 +221,12 @@ export default function ChatIntereses() {
             </button>
           ))}
         </div>
+      )}
+
+      {saldo !== null && saldo < 15 && (
+        <p className="mono text-[11px] text-[var(--solar)] mb-3">
+          Te quedan {saldo} créditos este mes.
+        </p>
       )}
 
       {cargandoHilo ? (
@@ -263,6 +287,7 @@ export default function ChatIntereses() {
                     ) : (
                       <p className="mono text-xs text-[var(--muted)]">buscando…</p>
                     )}
+                    {!!t.barrios?.length && <TablaBarrios filas={t.barrios} />}
                     {!!t.inmuebles?.length && (
                       <div className="grid sm:grid-cols-2 gap-3">
                         {t.inmuebles.map((l) => (

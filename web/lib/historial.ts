@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import { claveListing, type Listing } from "./types";
+import { claveListing, type BarrioStat, type Listing } from "./types";
 
 /**
  * Reconstruye la conversación guardada para poder retomarla en otra sesión.
@@ -19,6 +19,13 @@ export interface Turno {
   texto: string;
   fotos?: string[];
   inmuebles?: Listing[];
+  /**
+   * No se rehidratan al retomar una conversación vieja, a diferencia de los
+   * inmuebles: lo guardado es el texto compacto, no las filas, y volver a
+   * consultar barrio_stats devolvería las medianas de HOY bajo un comentario
+   * escrito con las de entonces. Mejor sin tabla que con una que miente.
+   */
+  barrios?: BarrioStat[];
 }
 
 interface BloqueGuardado {

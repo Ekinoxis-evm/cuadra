@@ -8,7 +8,7 @@ import {
   guardarPreferencias, leerPreferencias,
 } from "@/lib/agente";
 import { registrarConsumo, saldo, sumarUso, usoVacio } from "@/lib/consumo";
-import type { Listing } from "@/lib/types";
+import type { BarrioStat, Listing } from "@/lib/types";
 
 // El loop agéntico puede encadenar varias llamadas a herramientas.
 export const maxDuration = 300;
@@ -187,7 +187,11 @@ export async function POST(req: NextRequest) {
               if (r.listings.length)
                 enviar("inmuebles", r.listings satisfies Listing[]);
             } else if (llamada.name === "estadisticas_barrio") {
-              texto = await estadisticasBarrio(db, input);
+              const r = await estadisticasBarrio(db, input);
+              texto = r.paraModelo;
+              // La tabla la pinta la UI. Al modelo le queda comentar lo que
+              // ahí se ve, en vez de transcribir veinte filas en prosa.
+              if (r.barrios.length) enviar("barrios", r.barrios);
             } else if (llamada.name === "guardar_preferencias") {
               texto = await guardarPreferencias(db, userId, input);
               enviar("preferencias", input);

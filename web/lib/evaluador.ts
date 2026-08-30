@@ -181,11 +181,11 @@ export async function evaluar(
         // El esquema de la herramienta pide un barrio; la consulta espera una
         // lista. Sin barrio se traen los de más volumen, que al menos dan
         // referencia de ciudad.
-        const texto = await estadisticasBarrio(db, {
+        const { paraModelo } = await estadisticasBarrio(db, {
           barrios: i.barrio ? [i.barrio] : [],
           operacion: i.operacion ?? "venta",
         });
-        resultados.push({ type: "tool_result", tool_use_id: ll.id, content: texto });
+        resultados.push({ type: "tool_result", tool_use_id: ll.id, content: paraModelo });
         continue;
       }
 

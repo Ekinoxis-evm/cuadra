@@ -1,6 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Listing, Preferencias } from "./types";
+import type { BarrioStat, Listing, Preferencias } from "./types";
 
 export const MODELO = "claude-opus-5";
 
@@ -205,7 +205,7 @@ export async function buscarInmuebles(
 export async function estadisticasBarrio(
   db: SupabaseClient,
   input: Record<string, unknown>,
-): Promise<string> {
+): Promise<{ paraModelo: string; barrios: BarrioStat[] }> {
   let q = db
     .from("barrio_stats")
     .select("*")
@@ -214,9 +214,27 @@ export async function estadisticasBarrio(
     q = q.in("barrio", input.barrios as string[]);
 
   const { data, error } = await q.order("n", { ascending: false }).limit(25);
-  if (error) return `Error consultando estadísticas: ${error.message}`;
-  if (!data?.length) return "No hay estadísticas para esos barrios.";
-  return JSON.stringify(data);
+  if (error)
+    return { paraModelo: `Error consultando estadísticas: ${error.message}`, barrios: [] };
+  if (!data?.length)
+    return { paraModelo: "No hay estadísticas para esos barrios.", barrios: [] };
+
+  const barrios = data as unknown as BarrioStat[];
+
+  // Al modelo va texto compacto, no el JSON entero: los mismos números en
+  // JSON cuestan casi el triple de tokens y lo empujan a transcribirlos en
+  // prosa. La tabla la pinta la UI desde `barrios`, que van por su propio
+  // evento; el modelo solo tiene que comentar lo que ahí se ve.
+  const paraModelo = barrios
+    .map(
+      (b) =>
+        `${b.barrio}: mediana ${Math.round(b.median_cop).toLocaleString("es-CO")}` +
+        (b.median_m2 ? `, ${Math.round(b.median_m2).toLocaleString("es-CO")}/m²` : "") +
+        `, n=${b.n}`,
+    )
+    .join("\n");
+
+  return { paraModelo, barrios };
 }
 
 export async function guardarPreferencias(
