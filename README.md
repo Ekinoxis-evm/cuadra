@@ -123,28 +123,29 @@ Costos medidos contra la API, no estimados:
 El caché del historial (`conCache` en `agente.ts`) es 4,9× más barato sin tocar el
 prompt. La búsqueda, no la evaluación, es lo que hay que acotar.
 
-## Revisar proyectos (a mano, por ahora)
-No hay panel de admin a propósito: con menos de cinco propuestas no compensa
-construirlo, y hacerlo en SQL obliga a mirar cada una. El proponente mueve su
-borrador a `en_revision` desde la app; de ahí en adelante es manual.
+## Revisar proyectos
+La cola vive en **`/revision`**, ordenada por urgencia y no por antigüedad:
+primero lo que tiene señales de gravedad alta, después lo que la rúbrica
+recomienda publicar (son las decisiones rápidas y desatascan), y al final por
+antigüedad para que nada se quede olvidado abajo. Ordenar por puntaje solo
+sería peor: un 80 con señal grave es más urgente que un 45 limpio.
+
+El veredicto llega al lado de cada propuesta, pero **decide una persona**.
+Publicar es plata de terceros sobre una obra real, y automatizar el sí con una
+herramienta que puntúa sobre lo *declarado* sería confundir "coherente" con
+"verificado". La nota de devolución viene precargada con lo que la rúbrica le
+escribió al proponente: casi siempre sirve, y se puede editar antes de mandarla.
+
+Para entrar hay que estar en `ADMIN_DIDS` (DIDs de Privy separados por coma).
+**Falla cerrado**: sin esa variable no revisa nadie. Con un solo revisor no
+compensa una tabla de roles; cuando sean varios, sí.
+
+Publicar exige KYC aprobado, y se revalida en el momento de publicar y no solo
+al proponer: entre una cosa y otra el KYC pudo cambiar, y esta es la puerta por
+la que se sale a recibir dinero.
 
 ```sql
--- La cola: lo que espera respuesta, lo más viejo primero.
-select id, titulo, barrio, meta_cop, enviado_revision_at, documentos
-  from proyectos where estado = 'en_revision' order by enviado_revision_at;
-
--- Aprobar → sale a la vitrina y a /proyecto/<id>
-update proyectos set estado = 'publicado', revisado_at = now(),
-       revisado_por = 'william', nota_revision = null
- where id = '...';
-
--- Pedir ajustes → la nota se le muestra al proponente, que corrige y reenvía
-update proyectos set estado = 'rechazado', revisado_at = now(),
-       revisado_por = 'william',
-       nota_revision = 'El presupuesto no cuadra con la meta: ...'
- where id = '...';
-
--- KYC: sin aprobar, la persona puede preparar borradores pero no publicar
+-- Sigue siendo útil para el KYC, que no tiene pantalla todavía.
 select privy_did, tipo_documento, documento, nombre, apellido, estado from kyc;
 update kyc set estado = 'aprobado', revisado_at = now() where privy_did = '...';
 ```
@@ -156,9 +157,7 @@ la vitrina.
 
 ## Roadmap corto
 Lo siguiente, en orden de lo que desbloquea más:
-- [ ] **La llamada al evaluador**: el loop con `estadisticas_barrio` que convierte
-      `respuestas` en un veredicto. La rúbrica está escrita y sin usar.
-- [ ] Cola de revisión que lea `evaluaciones` en vez de SQL a mano
+- [ ] Pantalla de KYC: es lo único del flujo que sigue siendo SQL a mano
 - [ ] Cómo se ven tablas y listings dentro del chat
 - [ ] Contratos ERC-7540 (vaults por proyecto, COPm en Celo) con las participaciones
       pensadas desde el diseño para servir de colateral
