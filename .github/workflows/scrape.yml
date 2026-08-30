@@ -1,0 +1,90 @@
+# Scrape diario de Fincaraíz y sync a Supabase.
+#
+# El orden importa y no es negociable: pull ANTES de scrape.
+#
+# El scraper guarda en SQLite cosas que no se pueden recalcular raspando —
+# `first_seen`, `active`, `detail_at`. CI arranca con disco limpio, así que sin
+# el pull cada corrida pondría first_seen = hoy en los 1.536 avisos (adiós a la
+# historia) y `close_stale` no marcaría inactivo nada, dejando en la vitrina
+# inmuebles que ya salieron del mercado. El pull siembra el SQLite desde
+# Supabase y la corrida se comporta como si fuera la del portátil.
+#
+# No se usa actions/cache para el .db: un cache que expira o falla vuelve al
+# escenario destructivo de arriba, en silencio. Supabase ya es la fuente de
+# verdad; leerla es más lento y no se equivoca.
+
+name: scrape
+
+on:
+  schedule:
+    # 08:10 UTC = 03:10 en Cali. Fuera de hora pico del portal y con margen
+    # para que el sync termine antes de que alguien abra la app en la mañana.
+    - cron: "10 8 * * *"
+  workflow_dispatch:
+    inputs:
+      paginas:
+        description: "Páginas por operación y tipo"
+        default: "20"
+
+concurrency:
+  # Dos corridas a la vez escribirían el mismo SQLite desde estados distintos.
+  group: scrape
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    # El enriquecimiento hace un fetch por listing: con ~1.500 no cabe en el
+    # default de 6 h si el portal va lento, pero tampoco debe colgarse.
+    timeout-minutes: 120
+
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scrapers/requirements.txt
+
+      - name: Instalar dependencias
+        working-directory: scrapers
+        run: pip install -r requirements.txt
+
+      - name: Sembrar el SQLite desde Supabase
+        working-directory: scrapers
+        run: python pull_supabase.py
+
+      - name: Scrape
+        working-directory: scrapers
+        # MercadoLibre exige OAuth desde 2025 y responde 403; --skip-meli
+        # hasta que se registre la app.
+        run: python cali_inmuebles.py scrape --skip-meli --pages ${{ inputs.paginas || '20' }}
+
+      - name: Enriquecer los nuevos
+        working-directory: scrapers
+        # Sin --redo: solo los que no tienen detail_at. Reanudable por diseño,
+        # así que una corrida que se corte no obliga a repetir las 1.500.
+        run: python cali_inmuebles.py enrich
+
+      - name: Subir a Supabase
+        working-directory: scrapers
+        run: python sync_supabase.py
+
+      - name: Refrescar barrio_stats
+        # Sin esto el tablero, el chat y el evaluador siguen leyendo las
+        # medianas de ayer. El evaluador juzga presupuestos contra ese $/m²,
+        # así que un refresco olvidado se convierte en un veredicto peor.
+        run: |
+          curl -sS -f -X POST "$SUPABASE_URL/rest/v1/rpc/refrescar_barrio_stats" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Content-Type: application/json" -d '{}'
+
+      - name: Resumen
+        working-directory: scrapers
+        run: python cali_inmuebles.py report >> "$GITHUB_STEP_SUMMARY"

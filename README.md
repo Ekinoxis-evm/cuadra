@@ -19,25 +19,49 @@ Stack: Python scrapers (laptop) → Supabase → Next.js 15 + Privy → Vercel.
 Corre `supabase/migrations/001_init.sql` en el SQL editor (o vía Supabase MCP:
 "aplica esta migración en mi proyecto X"). Copia URL + anon key + service role key.
 
-### 2 · Scraper (5 min, desde laptop)
+### 2 · Scraper
+
+**En automático (recomendado).** `.github/workflows/scrape.yml` corre diario a
+las 03:10 de Cali y también a mano desde la pestaña Actions. Necesita dos
+secretos del repo: `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY`.
+
+El orden de los pasos no es negociable: **pull antes de scrape**. El scraper
+guarda en SQLite cosas que no se pueden recalcular raspando — `first_seen`,
+`active`, `detail_at` — y CI arranca con disco limpio. Sin el pull, cada
+corrida pondría `first_seen = hoy` en los 1.536 avisos (adiós a la historia de
+cuánto lleva publicado cada inmueble) y `close_stale` no marcaría inactivo
+nada, dejando en la vitrina inmuebles que ya salieron del mercado. Verificado:
+el viaje pull → sync deja la base con huella idéntica.
+
+**A mano, desde el portátil:**
 ```bash
 cd scrapers
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python cali_inmuebles.py scrape --skip-meli   # arriendo + venta, aptos + casas
-.venv/bin/python cali_inmuebles.py report               # sanity check local
 
-# Toma las llaves del .env.local ya lleno
 set -a && . ../web/.env.local && set +a
 export SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL"
-.venv/bin/python sync_supabase.py
+
+.venv/bin/python pull_supabase.py                        # siembra el .db
+.venv/bin/python cali_inmuebles.py scrape --skip-meli    # arriendo + venta
+.venv/bin/python cali_inmuebles.py enrich                # detalle, reanudable
+.venv/bin/python sync_supabase.py                        # sube
+```
+`pull_supabase.py` también sirve para recuperar el `.db` si se pierde.
+
+Después del sync hay que refrescar la vista materializada, o el tablero, el
+chat y el evaluador siguen leyendo las medianas de ayer — y el evaluador juzga
+presupuestos contra ese $/m², así que un refresco olvidado se vuelve un
+veredicto peor. La Action lo hace sola; a mano:
+```bash
+curl -X POST "$SUPABASE_URL/rest/v1/rpc/refrescar_barrio_stats" \
+  -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+  -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" -d '{}'
 ```
 
 > **MercadoLibre está fuera de servicio como fuente.** `api.mercadolibre.com/sites/MCO/search`
 > responde **403**: ya exige OAuth para búsquedas anónimas. Por eso `--skip-meli`.
-> Para revivirlo hay que registrar una app en MeLi y meter el flujo de token en
-> `scrape_meli()`. Hoy el 100% de los datos viene de Fincaraíz.
-Después del sync, en Supabase: `REFRESH MATERIALIZED VIEW barrio_stats;`
-Repite diario (cron de laptop o GitHub Action después).
+> Hoy el 100% de los datos viene de Fincaraíz, que es un punto único de falla.
 
 ### 3 · Privy (3 min)
 dashboard.privy.io → nueva app → habilita email + wallet + Google.
