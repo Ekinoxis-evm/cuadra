@@ -46,7 +46,7 @@ Copia App ID y App Secret.
 ### 4 · Web (5 min)
 ```bash
 cd web
-cp .env.example .env.local     # llena las 5 variables
+cp .env.example .env.local     # Supabase ×3, Privy ×2, Anthropic
 npm install
 npm run dev                    # http://localhost:3000
 ```
@@ -62,9 +62,66 @@ Data: IBM Plex Mono con números tabulares. Elemento firma: el **Tablero de
 barrios** — mediana y $/m² clickeable que filtra los resultados.
 
 ## Estado actual
-Primera corrida real: **1.536 listings** activos, **215 barrios**.
-Proyecto Supabase `cuadra` (`ffjvykbpqlrseskxuccq`, us-east-1), migración aplicada.
-App verificada end-to-end en local: tablero y resultados con datos reales.
+Primera corrida real: **1.536 listings** activos (1.534 con detalle), **303 barrios**.
+Proyecto Supabase `cuadra` (`ffjvykbpqlrseskxuccq`, us-east-1), migraciones 001–009
+aplicadas. Los datos son del último scrape: revisa `max(last_seen)` antes de sacar
+conclusiones de frescura.
+
+### Marco legal — léelo antes de tocar el flujo de plata
+El **Decreto 1357 de 2018** regula la financiación colaborativa **solo cuando se emiten
+valores**: títulos de deuda o de participación. Esa modalidad exige entidad autorizada
+por la Superintendencia Financiera, receptor persona jurídica y proyecto productivo.
+La financiación por **donación o recompensa quedó expresamente fuera** del decreto.
+
+CUADRA opera hoy en la vía de donación. Por eso `espera_retorno` no es una pregunta más
+del formulario: es la que decide si la propuesta se puede recibir. Está en el intake
+(`web/lib/intake.ts`) y corta la entrevista en el momento, no al final.
+
+Consecuencia para los vaults: **si una participación da derecho a retorno, es un valor
+en Colombia.** El mercado de préstamos con colateral cae entero en la vía regulada.
+
+### Cómo se propone un proyecto
+Dos toques —quién propone y qué tipo de obra— y de ahí una entrevista conversacional
+(`/api/intake`). Cada tipo de proponente tiene su guion, porque lo que acredita a cada
+uno es distinto: a una persona su cédula y su relación con el predio; a una empresa el
+certificado de existencia y representación; a una ESAL su personería jurídica y si está
+en el Régimen Tributario Especial.
+
+El reparto es deliberado: **el modelo pone el tono, el código pone el guion.** Cuáles
+preguntas aplican y cuándo se acabó salen de `intake.ts`. Si el modelo decidiera cuándo
+terminó, dos propuestas idénticas recorrerían preguntas distintas y la rúbrica dejaría
+de poder compararlas. `normalizar()` en `intake-agente.ts` es la aduana: solo entra lo
+que el guion conoce y con el tipo que declara.
+
+### Evaluación
+Rúbrica de cinco ejes con pesos por tipo de proponente, en `web/lib/evaluacion.ts`.
+Los pesos viven en código versionado y `RUBRICA_VERSION` se guarda con cada veredicto,
+para poder releer un fallo viejo con la rúbrica que lo produjo.
+
+Lo que la hace defendible: el eje de presupuesto **no se juzga a ojo**. El evaluador
+está obligado a llamar `estadisticas_barrio` y comparar la meta contra el área y el
+$/m² real de ese barrio. Sin ese dato el eje va como `evaluable: false` — un eje sin
+datos no puntúa cero, porque cero significa "lo evalué y está mal".
+
+> ⚠️ La rúbrica y el esquema están escritos, pero **la llamada al evaluador todavía no
+> existe**. Ninguna propuesta se ha evaluado.
+
+### Créditos
+No se puede cobrar lo que no se mide: `consumo` guarda el `usage` exacto de cada
+llamada y de ahí salen los créditos. **1 crédito = USD 0,01** de costo nuestro.
+60 gratis al mes, que se renuevan solos porque el período está en la llave primaria
+de `creditos_mes` y no hay cron que mantener.
+
+Costos medidos contra la API, no estimados:
+
+| | USD |
+|---|---|
+| Sesión de chat, 12 turnos, **sin** caché | 1,0363 |
+| Sesión de chat, 12 turnos, **con** caché | 0,2110 |
+| Evaluar un proyecto (Fable 5, effort low) | 0,17 – 0,51 |
+
+El caché del historial (`conCache` en `agente.ts`) es 4,9× más barato sin tocar el
+prompt. La búsqueda, no la evaluación, es lo que hay que acotar.
 
 ## Revisar proyectos (a mano, por ahora)
 No hay panel de admin a propósito: con menos de cinco propuestas no compensa
@@ -98,13 +155,22 @@ proyecto viven en el bucket público `proyectos` y son las únicas que salen en
 la vitrina.
 
 ## Roadmap corto
+Lo siguiente, en orden de lo que desbloquea más:
+- [ ] **La llamada al evaluador**: el loop con `estadisticas_barrio` que convierte
+      `respuestas` en un veredicto. La rúbrica está escrita y sin usar.
+- [ ] Cola de revisión que lea `evaluaciones` en vez de SQL a mano
+- [ ] Cómo se ven tablas y listings dentro del chat
+- [ ] Contratos ERC-7540 (vaults por proyecto, COPm en Celo) con las participaciones
+      pensadas desde el diseño para servir de colateral
+- [ ] Comprar créditos de verdad: `PAQUETES` existe, no hay pasarela
+- [ ] Aportes de verdad: hoy `recaudado_cop` no lo escribe nadie
+
+Más adelante:
 - [ ] OAuth de MercadoLibre para reactivar esa fuente (hoy 403)
-- [ ] Limpiar `title` en `fr_parse_page`: hoy guarda el texto crudo del ancla y
-      repite el precio dentro del título
+- [ ] Limpiar `title` en `fr_parse_page`: guarda el texto crudo del ancla y repite
+      el precio dentro del título
 - [ ] Fetchers Metrocuadrado (Algolia) + Ciencuadras (trae comuna en la data)
 - [ ] Yield bruto por barrio (mediana venta $/m² ÷ mediana arriendo $/m²)
 - [ ] Mapa por comuna
 - [ ] Alertas por email al bajar de precio (Privy email + cron)
-- [ ] Panel de revisión (cuando las propuestas no quepan en una consulta)
-- [ ] Aportes de verdad: hoy `recaudado_cop` no lo escribe nadie
 - [ ] KYC contra la Registraduría y cifrar `kyc.documento` en reposo
