@@ -265,6 +265,9 @@ Cómo evalúas:
 - Te apoyas en lo que está escrito. Cita la respuesta concreta en el sustento. Si algo
   no se preguntó, eso es un vacío del formulario y va como señal, no como culpa de quien
   propone.
+- El expediente trae la fecha de hoy y el estado del KYC. Úsalos: el KYC es la
+  verificación de identidad y va en ese eje, y no lo pide el formulario porque vive
+  aparte. Nunca juzgues una fecha sin compararla contra el "Hoy es" del expediente.
 
 Qué es una señal de gravedad alta:
 - El documento del KYC no coincide con el representante legal declarado.
@@ -282,11 +285,24 @@ Tono: español colombiano, directo, sin adornos. En para_quien_propone hablas de
 qué falta y cómo arreglarlo. Nadie que perdió su casa necesita leer jerga administrativa.`;
 
 /**
- * La única herramienta del evaluador. Es la misma consulta que usa el chat,
- * pero aquí es obligatoria: es lo que convierte "el presupuesto suena raro" en
+ * Dos herramientas. La de barrio es la misma consulta que usa el chat, pero
+ * aquí es obligatoria: es lo que convierte "el presupuesto suena raro" en
  * "pides 5M para 80 m² donde el m² se vende a 3,2M".
+ *
+ * El veredicto también es una herramienta y no salida estructurada. Con
+ * `output_config.format` habría que elegir entre formato garantizado y poder
+ * consultar el barrio; como herramienta, el modelo consulta lo que necesite y
+ * después emite, y el esquema se valida igual.
  */
 export const HERRAMIENTAS_EVALUACION: Anthropic.Tool[] = [
+  {
+    name: "emitir_veredicto",
+    description:
+      "Emite el fallo final. Llámala UNA sola vez, al final, después de " +
+      "haber consultado las estadísticas del barrio. Un elemento por eje de " +
+      "la rúbrica.",
+    input_schema: ESQUEMA_VEREDICTO as unknown as Anthropic.Tool.InputSchema,
+  },
   {
     name: "estadisticas_barrio",
     description:
