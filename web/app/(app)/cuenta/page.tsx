@@ -1,23 +1,29 @@
 "use client";
 import { Suspense, useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
 import NavApp from "@/components/NavApp";
 import ChatIntereses from "@/components/ChatIntereses";
 import Perfil from "@/components/cuenta/Perfil";
 import Wallet from "@/components/cuenta/Wallet";
 import Favoritos from "@/components/cuenta/Favoritos";
-import Proyectos from "@/components/cuenta/Proyectos";
 import Onboarding from "@/components/cuenta/Onboarding";
 
-const TABS = ["intereses", "favoritos", "wallet", "proyectos", "perfil"] as const;
+const TABS = ["intereses", "favoritos", "wallet", "perfil"] as const;
 type Tab = (typeof TABS)[number];
 
 function Contenido() {
   const params = useSearchParams();
+  const router = useRouter();
   const pedida = params.get("tab");
   // Intereses por defecto: es el chat, y es lo que la gente viene a usar.
   const tab: Tab = TABS.includes(pedida as Tab) ? (pedida as Tab) : "intereses";
+
+  // Los proyectos tuvieron pestaña aquí; ahora son sección con ruta propia.
+  // El enlace viejo sigue vivo en marcadores y chats compartidos.
+  useEffect(() => {
+    if (pedida === "proyectos") router.replace("/proyectos");
+  }, [pedida, router]);
 
   const { ready, authenticated, getAccessToken } = usePrivy();
   const [necesitaOnboarding, setNecesitaOnboarding] = useState<boolean | null>(null);
@@ -47,7 +53,6 @@ function Contenido() {
         {tab === "intereses" && <ChatIntereses />}
         {tab === "favoritos" && <Favoritos />}
         {tab === "wallet" && <Wallet />}
-        {tab === "proyectos" && <Proyectos />}
         {tab === "perfil" && <Perfil />}
         </>
         )}

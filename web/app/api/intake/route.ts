@@ -24,6 +24,9 @@ const privy = new PrivyClient(
 
 const MAX_VUELTAS = 6;
 
+/** Lo que "dice" el usuario al abrir. Nadie lo escribió: no se muestra al retomar. */
+const APERTURA = "Hola, quiero proponer un proyecto.";
+
 async function did(req: NextRequest): Promise<string | null> {
   const auth = req.headers.get("authorization");
   if (!auth?.startsWith("Bearer ")) return null;
@@ -40,6 +43,64 @@ interface Entrada {
   proponente?: string;
   tipo?: string;
   mensaje?: string;
+}
+
+/**
+ * Retomar una entrevista: los turnos visibles y dónde quedó.
+ *
+ * Antes retomar era imposible desde la interfaz — el componente aceptaba un
+ * id pero arrancaba siempre desde el selector — y un borrador a medias solo
+ * podía terminarse con el formulario, que no sabe nada del guion. Aquí se
+ * devuelve solo el texto: los tool_use y tool_result son mecánica interna.
+ */
+export async function GET(req: NextRequest) {
+  const userId = await did(req);
+  if (!userId) return Response.json({ error: "No autorizado" }, { status: 401 });
+
+  const proyectoId = req.nextUrl.searchParams.get("proyectoId") ?? "";
+  if (!/^[0-9a-f-]{36}$/i.test(proyectoId))
+    return Response.json({ error: "Proyecto no encontrado" }, { status: 404 });
+
+  const db = supabaseAdmin();
+  const { data: p } = await db
+    .from("proyectos")
+    .select("id, privy_did, proponente, tipo, estado, respuestas")
+    .eq("id", proyectoId)
+    .maybeSingle();
+  if (!p || p.privy_did !== userId)
+    return Response.json({ error: "Proyecto no encontrado" }, { status: 404 });
+
+  const { data: mensajes } = await db
+    .from("mensajes")
+    .select("rol, contenido")
+    .eq("conversacion_id", proyectoId)
+    .order("created_at");
+
+  type Bloque = { type: string; text?: string };
+  const turnos: { rol: "user" | "assistant"; texto: string }[] = [];
+  for (const m of mensajes ?? []) {
+    const bloques = (Array.isArray(m.contenido) ? m.contenido : []) as Bloque[];
+    const texto = bloques
+      .filter((b) => b.type === "text")
+      .map((b) => b.text ?? "")
+      .join("\n")
+      .trim();
+    if (!texto || texto === APERTURA) continue;
+    turnos.push({ rol: m.rol as "user" | "assistant", texto });
+  }
+
+  const proponente = p.proponente as ProponenteId;
+  const respuestas = (p.respuestas ?? {}) as Respuestas;
+  return Response.json({
+    proponente,
+    tipo: p.tipo,
+    estado: p.estado,
+    turnos,
+    avance: avance(proponente, respuestas),
+    pendientes: faltantes(proponente, respuestas).length,
+    completo: faltantes(proponente, respuestas).length === 0,
+    bloqueo: bloqueada(respuestas),
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -151,7 +212,7 @@ export async function POST(req: NextRequest) {
       contenido,
     });
   } else if (!messages.length) {
-    const contenido = [{ type: "text" as const, text: "Hola, quiero proponer un proyecto." }];
+    const contenido = [{ type: "text" as const, text: APERTURA }];
     messages.push({ role: "user", content: contenido });
     await db.from("mensajes").insert({
       conversacion_id: conversacionId,

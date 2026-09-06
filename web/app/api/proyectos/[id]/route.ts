@@ -1,7 +1,38 @@
 import { NextRequest } from "next/server";
 import { didDe, noAutorizado } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
-import { validarProyecto } from "@/lib/proyectos";
+import { EDITABLES, validarProyecto } from "@/lib/proyectos";
+
+/**
+ * Leer una propuesta propia, completa. Es lo que alimenta la página del
+ * proyecto: antes la lista traía todas las filas y el detalle vivía en
+ * memoria, así que recargar la página perdía el proyecto que se estaba mirando.
+ */
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const userId = await didDe(req);
+  if (!userId) return noAutorizado();
+
+  const { id } = await params;
+  if (!/^[0-9a-f-]{36}$/i.test(id))
+    return Response.json({ error: "Proyecto no encontrado" }, { status: 404 });
+
+  const { data } = await supabaseAdmin()
+    .from("proyectos")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  // Mismo 404 si no existe o si es de otra persona.
+  if (!data || data.privy_did !== userId)
+    return Response.json({ error: "Proyecto no encontrado" }, { status: 404 });
+
+  const { privy_did: _dueno, ...proyecto } = data;
+  void _dueno;
+  return Response.json(proyecto);
+}
 
 /**
  * Editar una propuesta propia.
@@ -12,8 +43,6 @@ import { validarProyecto } from "@/lib/proyectos";
  * colar otra cosa. Y publicado tampoco: ahí ya hay gente que aportó mirando
  * unas condiciones concretas.
  */
-const EDITABLES = ["borrador", "rechazado"];
-
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },

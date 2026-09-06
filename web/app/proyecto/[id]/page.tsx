@@ -205,7 +205,7 @@ export default async function ProyectoPublico({
         <footer className="mono text-[11px] text-[var(--muted)] py-8 border-t rule leading-relaxed">
           CUADRA · Cali, Colombia. Revisar una propuesta no es una recomendación
           de inversión ni una garantía de que la obra se ejecute.{" "}
-          <Link href="/cuenta?tab=proyectos" className="underline underline-offset-4">
+          <Link href="/proyectos" className="underline underline-offset-4">
             Ver todos los proyectos
           </Link>
           .

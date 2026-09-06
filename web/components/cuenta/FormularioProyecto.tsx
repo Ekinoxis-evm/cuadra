@@ -83,7 +83,8 @@ export default function FormularioProyecto({
   onCancelar,
   proyecto,
 }: {
-  onListo: () => void;
+  /** Recibe el id de la propuesta guardada, para aterrizar en su página. */
+  onListo: (id: string) => void;
   onCancelar?: () => void;
   /** Si viene, se edita esa propuesta en vez de crear una nueva. */
   proyecto?: ProyectoEditable;
@@ -172,7 +173,7 @@ export default function FormularioProyecto({
       );
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? "No se pudo guardar");
-      onListo();
+      onListo(editando ? proyecto!.id : String(j.id));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Algo falló");
     } finally {
@@ -189,7 +190,7 @@ export default function FormularioProyecto({
           </h3>
           <p className="mono text-[11px] text-[var(--muted)] mt-1.5 leading-relaxed">
             {editando
-              ? "Vuelve a quedar como borrador. Cuando esté lista, la mandas a revisión desde la lista."
+              ? "Vuelve a quedar como borrador. Cuando esté lista, la mandas a revisión desde su página."
               : "Queda como borrador. Sale a la vitrina pública solo después de la revisión, y hasta entonces no recibe aportes."}
           </p>
         </div>

@@ -9,6 +9,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { usePrivy } from "@privy-io/react-auth";
 import Esfera, { type EstadoEsfera } from "@/components/Esfera";
 import Markdown from "@/components/Markdown";
@@ -22,12 +23,25 @@ interface Turno {
 }
 
 interface Props {
+  /** Si viene, se retoma esa entrevista donde quedó en vez de abrir una nueva. */
   proyectoId?: string;
-  /** Se llama cuando la entrevista queda completa. */
+  /** Se llama una vez, apenas existe el borrador en la base. */
+  alCrear?: (proyectoId: string) => void;
+  /** Se llama cuando la entrevista queda completa EN ESTA sesión. */
   alTerminar?: (proyectoId: string) => void;
 }
 
-export default function IntakeConversacional({ proyectoId, alTerminar }: Props) {
+interface Historial {
+  proponente: string;
+  tipo: string;
+  turnos: Turno[];
+  avance: number;
+  pendientes: number;
+  completo: boolean;
+  bloqueo: string | null;
+}
+
+export default function IntakeConversacional({ proyectoId, alCrear, alTerminar }: Props) {
   const { authenticated, getAccessToken } = usePrivy();
 
   const [proponente, setProponente] = useState<string | null>(null);
@@ -41,7 +55,11 @@ export default function IntakeConversacional({ proyectoId, alTerminar }: Props) 
   const [progreso, setProgreso] = useState(0);
   const [pendientes, setPendientes] = useState<number | null>(null);
   const [completo, setCompleto] = useState(false);
+  // Completo por lo que pasó aquí, no por lo que ya venía guardado: abrir una
+  // entrevista terminada para releerla no debe sacarte de la página.
+  const [terminoAqui, setTerminoAqui] = useState(false);
   const [bloqueo, setBloqueo] = useState<string | null>(null);
+  const [retomando, setRetomando] = useState(!!proyectoId);
 
   const finRef = useRef<HTMLDivElement>(null);
   const arrancado = useRef(false);
@@ -81,7 +99,9 @@ export default function IntakeConversacional({ proyectoId, alTerminar }: Props) 
 
         for await (const { evento, dato } of leerSSE(r)) {
           if (evento === "proyecto") {
-            setId((dato as { id: string }).id);
+            const nuevo = (dato as { id: string }).id;
+            if (!id) alCrear?.(nuevo);
+            setId(nuevo);
           } else if (evento === "texto") {
             setEstado("hablando");
             acumulado += dato as string;
@@ -97,11 +117,13 @@ export default function IntakeConversacional({ proyectoId, alTerminar }: Props) 
             setProgreso(d.avance);
             setPendientes(d.pendientes);
             setCompleto(d.completo);
+            if (d.completo) setTerminoAqui(true);
             if (d.bloqueo) setBloqueo(d.bloqueo);
           } else if (evento === "fin") {
             const d = dato as { avance: number; completo: boolean };
             setProgreso(d.avance);
             setCompleto(d.completo);
+            if (d.completo) setTerminoAqui(true);
           } else if (evento === "error") {
             setError((dato as { mensaje: string }).mensaje);
           }
@@ -112,8 +134,43 @@ export default function IntakeConversacional({ proyectoId, alTerminar }: Props) 
         setEstado("reposo");
       }
     },
-    [getAccessToken, id, proponente, tipo],
+    [getAccessToken, id, proponente, tipo, alCrear],
   );
+
+  // Retomar: se carga lo conversado y se sigue desde ahí. El guion ya está
+  // decidido por el borrador, así que el selector no se muestra.
+  useEffect(() => {
+    if (!proyectoId || !authenticated || arrancado.current) return;
+    arrancado.current = true;
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        const r = await fetch(`/api/intake?proyectoId=${proyectoId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!r.ok) {
+          const j = await r.json().catch(() => ({}));
+          setError(j.error ?? `Error ${r.status}`);
+          return;
+        }
+        const h = (await r.json()) as Historial;
+        setProponente(h.proponente);
+        setTipo(h.tipo);
+        setTurnos(h.turnos);
+        setProgreso(h.avance);
+        setPendientes(h.pendientes);
+        setCompleto(h.completo);
+        setBloqueo(h.bloqueo);
+        // Un borrador sin conversación guardada (se cerró la pestaña antes de
+        // la primera pregunta): el asistente vuelve a abrir.
+        if (!h.turnos.length && !h.completo && !h.bloqueo) void hablar();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "No se pudo cargar la entrevista");
+      } finally {
+        setRetomando(false);
+      }
+    })();
+  }, [proyectoId, authenticated, getAccessToken, hablar]);
 
   // Apertura: apenas hay tipo elegido, el asistente saluda solo.
   useEffect(() => {
@@ -123,8 +180,8 @@ export default function IntakeConversacional({ proyectoId, alTerminar }: Props) 
   }, [proponente, tipo, hablar]);
 
   useEffect(() => {
-    if (completo && id) alTerminar?.(id);
-  }, [completo, id, alTerminar]);
+    if (terminoAqui && id) alTerminar?.(id);
+  }, [terminoAqui, id, alTerminar]);
 
   if (!authenticated)
     return (
@@ -132,6 +189,9 @@ export default function IntakeConversacional({ proyectoId, alTerminar }: Props) 
         Entra a tu cuenta para proponer un proyecto.
       </p>
     );
+
+  if (retomando)
+    return <p className="mono text-xs text-[var(--muted)]">···</p>;
 
   // ------------------------------------------------------------ los dos toques
   if (!proponente || !tipo)
@@ -261,6 +321,14 @@ export default function IntakeConversacional({ proyectoId, alTerminar }: Props) 
             Ya tenemos todo lo necesario. Revisa la propuesta y mándala a revisión
             cuando quieras.
           </p>
+          {id && (
+            <Link
+              href={`/proyectos/${id}`}
+              className="mono text-[11px] border rule px-3 py-1.5 hover:bg-[var(--petrol-2)] inline-block mt-3"
+            >
+              ver la propuesta
+            </Link>
+          )}
         </div>
       )}
     </div>

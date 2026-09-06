@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { didDe, noAutorizado } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
-import { validarProyecto } from "@/lib/proyectos";
+import { CAMPOS_PUBLICOS, validarProyecto } from "@/lib/proyectos";
 
 /**
  * Proyectos tokenizados.
@@ -11,10 +11,6 @@ import { validarProyecto } from "@/lib/proyectos";
  * Separarlo así deja a la gente preparar su propuesta mientras la verificación
  * avanza, sin que nada llegue a pedir plata antes de tiempo.
  */
-
-const CAMPOS_PUBLICOS =
-  "id, titulo, descripcion, tipo, proponente, barrio, estado_obra, area_m2, " +
-  "plazo_meses, meta_cop, recaudado_cop, imagenes, estado, updated_at";
 
 /** GET sin sesión: vitrina pública. Con sesión: además, los propios. */
 export async function GET(req: NextRequest) {

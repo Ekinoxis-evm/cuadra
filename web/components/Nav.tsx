@@ -14,7 +14,7 @@ const ITEMS = [
   { href: "/cuenta?tab=intereses", label: "ASISTENTE", destacado: true },
   { href: "/cuenta?tab=favoritos", label: "GUARDADOS" },
   { href: "/cuenta?tab=wallet", label: "WALLET" },
-  { href: "/cuenta?tab=proyectos", label: "PROYECTOS" },
+  { href: "/proyectos", label: "PROYECTOS" },
   { href: "/cuenta?tab=perfil", label: "AJUSTES" },
 ];
 
@@ -31,7 +31,10 @@ export default function Nav({
 
   const esActivo = (href: string) => {
     const [ruta, query] = href.split("?");
-    if (ruta !== pathname) return false;
+    // Una sección con subpáginas (/proyectos/…) sigue siendo la misma sección.
+    const misma =
+      ruta === pathname || (ruta !== "/" && pathname.startsWith(`${ruta}/`));
+    if (!misma) return false;
     if (!query) return true;
     return query.split("=")[1] === tabActiva;
   };

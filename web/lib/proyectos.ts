@@ -1,3 +1,5 @@
+import type { Respuestas } from "./types";
+
 /**
  * Vocabulario de proyectos, compartido entre el formulario y la API.
  *
@@ -19,9 +21,20 @@ export const TIPOS = [
   },
 ] as const;
 
+/**
+ * Los cuatro tipos que acepta la base (migración 009). La entrevista crea
+ * propuestas de los cuatro; cuando esta lista tenía tres, una fundación que
+ * salía de la entrevista no podía ni editarse ni mandarse a revisión, porque
+ * `validarProyecto` la rechazaba como "tipo de proponente inválido".
+ */
 export const PROPONENTES = [
   { id: "persona", label: "Persona", detalle: "Propongo a título personal" },
-  { id: "empresa", label: "Empresa", detalle: "Constructora, fundación o sociedad" },
+  { id: "empresa", label: "Empresa", detalle: "Constructora, negocio o sociedad" },
+  {
+    id: "sin_animo_lucro",
+    label: "Sin ánimo de lucro",
+    detalle: "Fundación, corporación o asociación con personería jurídica",
+  },
   { id: "gobierno", label: "Entidad pública", detalle: "Alcaldía, secretaría o entidad" },
 ] as const;
 
@@ -137,12 +150,86 @@ export interface Documento {
   subido_at: string;
 }
 
+/** Columnas que cualquiera puede ver. Lo que no está aquí no sale de la API. */
+export const CAMPOS_PUBLICOS =
+  "id, titulo, descripcion, tipo, proponente, barrio, estado_obra, area_m2, " +
+  "plazo_meses, meta_cop, recaudado_cop, imagenes, estado, updated_at";
+
+/** Lo que ve cualquiera de un proyecto publicado. */
+export interface ProyectoPublico {
+  id: string;
+  titulo: string;
+  descripcion: string | null;
+  tipo: string;
+  proponente: string;
+  barrio: string | null;
+  estado_obra: string | null;
+  area_m2: number | null;
+  plazo_meses: number | null;
+  meta_cop: number | null;
+  recaudado_cop: number;
+  imagenes: string[] | null;
+  estado: string;
+  updated_at: string;
+}
+
+/** La fila completa, que solo ve quien la propuso. */
+export interface ProyectoPropio extends ProyectoPublico {
+  direccion: string | null;
+  estado_detalle: string | null;
+  documentos: Documento[] | null;
+  nota_revision: string | null;
+  respuestas: Respuestas;
+  regimen: "donacion" | "valores";
+  intake_completo_at: string | null;
+  enviado_revision_at: string | null;
+}
+
+export const ETIQUETA_ESTADO: Record<string, string> = {
+  borrador: "borrador",
+  en_revision: "en revisión",
+  publicado: "publicado",
+  rechazado: "necesita ajustes",
+  cerrado: "cerrado",
+};
+
+/** Qué le falta a este proyecto para avanzar, dicho sin rodeos. */
+export const QUE_SIGUE: Record<string, string> = {
+  borrador: "Guardado. Cuando esté listo, mándalo a revisión.",
+  en_revision: "Lo estamos revisando. Todavía no recibe aportes.",
+  publicado: "Público en la vitrina. Ya puede recibir aportes.",
+  rechazado: "Corrige lo que te pedimos y vuelve a mandarlo.",
+  cerrado: "Cerrado.",
+};
+
+/** Los tres tramos por los que pasa un proyecto ya creado. */
+export const TRAMOS_PROYECTO = [
+  { id: "borrador", titulo: "Borrador", nota: "Es tuyo: complétalo y mándalo a revisión cuando esté listo." },
+  { id: "en_revision", titulo: "En revisión", nota: "Lo estamos leyendo. Si falta algo te lo decimos aquí." },
+  { id: "publicado", titulo: "En vitrina", nota: "Público y con página propia. Ya puede recibir aportes." },
+];
+
+/** En qué tramo va un proyecto según su estado. Rechazado vuelve al primero. */
+export const tramoDe = (estado: string) =>
+  estado === "en_revision" ? 1 : ["publicado", "cerrado"].includes(estado) ? 3 : 0;
+
+/** Estados en los que el proponente todavía puede tocar la propuesta. */
+export const EDITABLES = ["borrador", "rechazado"];
+
+/**
+ * Una propuesta nacida en la entrevista llega sin título real. Es la señal de
+ * que el camino para completarla es seguir conversando, no el formulario.
+ */
+export const TITULO_PROVISIONAL = "Propuesta sin título";
+
 export const etiquetaTipo = (id: string) =>
   TIPOS.find((t) => t.id === id)?.titulo ?? id;
 export const etiquetaEstadoObra = (id: string | null) =>
   ESTADOS_OBRA.find((e) => e.id === id)?.titulo ?? null;
 export const etiquetaDocumento = (id: string) =>
   TIPOS_DOCUMENTO.find((t) => t.id === id)?.titulo ?? id;
+export const etiquetaProponente = (id: string) =>
+  PROPONENTES.find((p) => p.id === id)?.label ?? id;
 
 export const pesoLegible = (bytes: number) =>
   bytes >= 1024 * 1024
@@ -336,6 +423,32 @@ export function validarProyecto(
       imagenes,
     },
   };
+}
+
+/**
+ * Todo lo que falta para que una propuesta pueda mandarse a revisión, en el
+ * mismo orden en que el servidor lo exigiría. La entrevista llena
+ * `respuestas` pero no las columnas que `validarProyecto` revisa, así que
+ * una propuesta nacida conversando llega aquí con casi todo pendiente: esta
+ * lista es lo que evita que el botón de enviar falle sin explicar por qué.
+ */
+export function pendientesParaRevision(p: {
+  titulo: string | null;
+  descripcion: string | null;
+  estado_obra: string | null;
+  meta_cop: number | null;
+  documentos?: Documento[] | null;
+}): string[] {
+  const falta: string[] = [];
+  if (!p.titulo || p.titulo === TITULO_PROVISIONAL || p.titulo.trim().length < 6)
+    falta.push("un título");
+  if ((p.descripcion ?? "").trim().length < 40)
+    falta.push("qué se va a hacer, con al menos 40 caracteres");
+  if (!p.estado_obra) falta.push("en qué estado está el espacio hoy");
+  if (!p.meta_cop || p.meta_cop <= 0) falta.push("la meta de recaudo");
+  const soporte = faltaParaRevision({ documentos: p.documentos });
+  if (soporte) falta.push("un soporte técnico (peritaje, avalúo o evaluación)");
+  return falta;
 }
 
 /** Qué le falta a una propuesta para poder mandarse a revisión. */
