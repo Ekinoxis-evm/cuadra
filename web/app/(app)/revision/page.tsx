@@ -47,6 +47,9 @@ export default function Revision() {
   const [cargando, setCargando] = useState(true);
   const [prohibido, setProhibido] = useState(false);
   const [abierto, setAbierto] = useState<string | null>(null);
+  // Cuando la puerta niega, decirle a la persona cuál es SU identificador es
+  // la diferencia entre "no puedo entrar" y "ya sé qué poner en la variable".
+  const [miDid, setMiDid] = useState<string | null>(null);
   const [notas, setNotas] = useState<Record<string, string>>({});
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

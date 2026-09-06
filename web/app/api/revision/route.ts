@@ -7,7 +7,7 @@ import { cargarCola, esRevisor, noEsRevisor } from "@/lib/revision";
 export async function GET(req: NextRequest) {
   const did = await didDe(req);
   if (!did) return noAutorizado();
-  if (!esRevisor(did)) return noEsRevisor();
+  if (!esRevisor(did)) return noEsRevisor(did);
 
   return Response.json({ cola: await cargarCola(supabaseAdmin()) });
 }

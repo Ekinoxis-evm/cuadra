@@ -27,11 +27,35 @@ export function esRevisor(did: string | null): boolean {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  return lista.includes(did);
+  const yo = normalizarDid(did);
+  return lista.some((x) => normalizarDid(x) === yo);
 }
 
-export const noEsRevisor = () =>
-  Response.json({ error: "No autorizado" }, { status: 403 });
+/**
+ * `did:privy:abc` y `abc` son la misma persona.
+ *
+ * Privy devuelve el DID completo en `claims.userId`, pero su panel muestra el
+ * id pelado, y copiar de ahí a la variable deja al revisor fuera de su propio
+ * panel con un 403 que no explica nada. Esto no afloja la comprobación —
+ * sigue siendo igualdad exacta — solo canonicaliza un prefijo fijo antes de
+ * comparar. Lo que NO se acepta es una coincidencia parcial.
+ */
+const normalizarDid = (x: string) => x.trim().replace(/^did:privy:/, "");
+
+export const noEsRevisor = (did?: string | null) =>
+  Response.json(
+    {
+      error: "No autorizado",
+      // Devolverle a alguien su propio DID no revela nada que no sea suyo, y
+      // es la diferencia entre "no puedo entrar" y "ya sé qué poner en la
+      // variable". Con una puerta que falla cerrado, esto no es un lujo.
+      tu_did: did ?? null,
+      detalle: did
+        ? `Tu identificador es ${did}. Agrégalo a ADMIN_DIDS para poder revisar.`
+        : undefined,
+    },
+    { status: 403 },
+  );
 
 export interface EnCola {
   id: string;

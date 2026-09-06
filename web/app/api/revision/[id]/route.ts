@@ -17,7 +17,7 @@ export async function POST(
 ) {
   const did = await didDe(req);
   if (!did) return noAutorizado();
-  if (!esRevisor(did)) return noEsRevisor();
+  if (!esRevisor(did)) return noEsRevisor(did);
 
   const { id } = await params;
   const { decision, nota } = (await req.json()) as {
