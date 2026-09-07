@@ -267,7 +267,7 @@ export default function Perfil() {
           <Dato
             k="verificación"
             v={
-              <Link href="/cuenta?tab=verificacion" className="mono text-xs hover:text-[var(--solar)]">
+              <Link href="/proyectos/verificacion" className="mono text-xs hover:text-[var(--solar)]">
                 ver estado <span className="text-[var(--solar)] ml-2">→</span>
               </Link>
             }

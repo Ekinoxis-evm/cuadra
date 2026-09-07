@@ -86,3 +86,39 @@ export function formatearUnidades(bruto: bigint, decimales: number, digitos = 4)
   if (entera === 0n) return `<0,${"0".repeat(digitos - 1)}1`;
   return entera.toLocaleString("es-CO");
 }
+
+/**
+ * Las cadenas, para lo poco que el usuario tiene que saber de ellas: cómo se
+ * llama la red al confirmar un envío, en qué se paga la comisión, y dónde ver
+ * la transacción después.
+ */
+export const CADENAS: Record<number, { nombre: string; gas: string; explorador: string }> = {
+  1: { nombre: "Ethereum", gas: "ETH", explorador: "https://eth.blockscout.com" },
+  42220: { nombre: "Celo", gas: "CELO", explorador: "https://celo.blockscout.com" },
+};
+
+export const urlTx = (chainId: number, hash: string) =>
+  `${CADENAS[chainId]?.explorador ?? "https://eth.blockscout.com"}/tx/${hash}`;
+
+export const esDireccion = (x: string) => /^0x[0-9a-fA-F]{40}$/.test(x.trim());
+
+export const abreviarDireccion = (x: string) => `${x.slice(0, 6)}…${x.slice(-4)}`;
+
+/**
+ * "12,5" o "12.5" → entero de la cadena. Sin float en el camino: 0,1 + 0,2 en
+ * coma flotante no es 0,3, y en un envío eso es plata que no llega.
+ */
+export function parsearUnidades(texto: string, decimales: number): bigint | null {
+  const limpio = texto.trim().replace(/\s/g, "").replace(",", ".");
+  if (!/^\d*\.?\d*$/.test(limpio) || limpio === "" || limpio === ".") return null;
+  const [entera = "0", frac = ""] = limpio.split(".");
+  if (frac.length > decimales) return null;
+  return BigInt(entera || "0") * 10n ** BigInt(decimales) + BigInt((frac || "0").padEnd(decimales, "0"));
+}
+
+/** transfer(address,uint256), armado a mano: no hace falta un ABI entero para una función. */
+export function codificarTransfer(a: string, monto: bigint): `0x${string}` {
+  const dir = a.trim().slice(2).toLowerCase().padStart(64, "0");
+  const cant = monto.toString(16).padStart(64, "0");
+  return `0xa9059cbb${dir}${cant}`;
+}

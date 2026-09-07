@@ -11,7 +11,9 @@ import { useKyc, type EstadoKyc } from "@/components/proyectos/datos";
  * todo lo que la persona proponga, y su estado lo decide la verificación (hoy
  * una revisión nuestra; después, un proveedor de KYC). Por eso vive en la
  * cuenta y no dentro de la sección de proyectos, que solo pregunta por el
- * resultado antes de dejar proponer.
+ * resultado antes de dejar proponer. Se MUESTRA como pestaña de la sección de
+ * proyectos, a la vista y antes de PROPONER, porque es el paso previo y
+ * esconderlo hacía llegar a proponer sin saber que faltaba.
  */
 export const SIGNIFICADO_KYC: Record<EstadoKyc["estado"], { titulo: string; detalle: string }> = {
   pendiente: {
@@ -36,7 +38,7 @@ export const colorKyc = (estado: EstadoKyc["estado"]) =>
       ? "text-[var(--solar)]"
       : "text-[var(--bone)]";
 
-export const RUTA_VERIFICACION = "/cuenta?tab=verificacion";
+export const RUTA_VERIFICACION = "/proyectos/verificacion";
 
 /** La pestaña de la cuenta: estado, o el formulario si nunca se envió. */
 export default function VerificacionCuenta() {
@@ -56,7 +58,7 @@ export default function VerificacionCuenta() {
             una sola vez.
           </p>
         </div>
-        <FormularioKYC onListo={recargar} onCancelar={() => router.push("/cuenta?tab=perfil")} />
+        <FormularioKYC onListo={recargar} onCancelar={() => router.push("/proyectos/mios")} />
       </div>
     );
 

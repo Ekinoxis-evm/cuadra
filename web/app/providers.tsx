@@ -1,5 +1,6 @@
 "use client";
 import { PrivyProvider } from "@privy-io/react-auth";
+import { celo, mainnet } from "viem/chains";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
@@ -14,6 +15,11 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           accentColor: "#ff7a45",
         },
         embeddedWallets: { ethereum: { createOnLogin: "users-without-wallets" } },
+        // Las dos redes donde viven los activos de la wallet (lib/activos.ts).
+        // Explícitas para que un envío de COPm nunca dependa de la lista por
+        // defecto de Privy.
+        supportedChains: [mainnet, celo],
+        defaultChain: mainnet,
       }}
     >
       {children}
