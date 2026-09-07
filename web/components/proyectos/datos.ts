@@ -19,6 +19,7 @@ export function useFetchConSesion() {
 }
 
 export interface EstadoKyc {
+  tipo_documento?: string;
   documento_enmascarado: string;
   estado: "pendiente" | "aprobado" | "rechazado";
 }

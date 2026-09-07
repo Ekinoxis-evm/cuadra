@@ -1,9 +1,7 @@
 "use client";
 import { useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
-import Pasos from "@/components/Pasos";
 import Campo, { claseCampo } from "@/components/Campo";
-import { RUTA_PUBLICAR } from "@/lib/proyectos";
 
 /**
  * KYC mínimo, requisito para proponer un proyecto.
@@ -87,8 +85,8 @@ export default function FormularioKYC({
         <div>
           <h3 className="font-semibold">Verificación de identidad</h3>
           <p className="mono text-[11px] text-[var(--muted)] mt-1.5 leading-relaxed">
-            Primer tramo para proponer un proyecto. Toma un minuto y se hace una
-            sola vez.
+            Se hace una sola vez por cuenta y toma un minuto. Es independiente
+            de los proyectos: sirve para todos los que propongas.
           </p>
         </div>
         {onCancelar && (
@@ -101,10 +99,6 @@ export default function FormularioKYC({
           </button>
         )}
       </div>
-
-      {/* La ruta completa, no solo este formulario: enseña que verificar no es
-          el trámite final sino el primero de cuatro. */}
-      <Pasos pasos={RUTA_PUBLICAR} actual={0} etiqueta="TRAMO" />
 
       <div className="border rule p-4 space-y-3 bg-[var(--petrol-2)]">
         <div>

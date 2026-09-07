@@ -237,34 +237,6 @@ export const pesoLegible = (bytes: number) =>
     : `${Math.max(1, Math.round(bytes / 1024))} kB`;
 
 /**
- * Ruta completa de un proyecto, desde una cuenta recién creada hasta la
- * vitrina. Se dibuja igual en la lista, en la verificación y en el formulario
- * para que en todo momento se sepa en qué tramo va uno y qué falta.
- */
-export const RUTA_PUBLICAR = [
-  {
-    id: "identidad",
-    titulo: "Identidad",
-    nota: "Verificamos quién propone. Un proyecto recibe dinero de terceros, así que tiene que haber alguien identificable detrás.",
-  },
-  {
-    id: "borrador",
-    titulo: "Propuesta",
-    nota: "Cuentas qué se va a hacer, en qué estado está el espacio y cuánto cuesta. Puedes guardarla y volver después.",
-  },
-  {
-    id: "revision",
-    titulo: "Revisión",
-    nota: "Revisamos la propuesta y los soportes. Si falta algo te escribimos; nada recibe aportes en este tramo.",
-  },
-  {
-    id: "vitrina",
-    titulo: "En vitrina",
-    nota: "El proyecto es público y puede recibir aportes.",
-  },
-];
-
-/**
  * El did de Privy trae ':' y las llaves del storage se llevan mal con eso.
  * Es el prefijo de la carpeta del usuario en los dos buckets.
  */

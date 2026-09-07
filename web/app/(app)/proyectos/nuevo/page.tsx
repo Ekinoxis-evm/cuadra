@@ -1,65 +1,46 @@
 "use client";
 import Link from "next/link";
-import Pasos from "@/components/Pasos";
 import ConSesion from "@/components/proyectos/ConSesion";
+import { LineaIdentidad } from "@/components/proyectos/Identidad";
 import { useKyc } from "@/components/proyectos/datos";
-import { RUTA_PUBLICAR } from "@/lib/proyectos";
 
 /**
- * La puerta para proponer. Primero la identidad; después, dos caminos para
- * la misma propuesta: contarla conversando o llenar el formulario de corrido.
- * Obligar a conversar a quien ya sabe qué va en cada casilla es ponerle un
- * trámite más largo, no uno mejor.
+ * La puerta para proponer. Depende de la identidad —sin ella no se abre— pero
+ * la identidad no es parte de la propuesta: se muestra como requisito, con su
+ * estado, y se resuelve en su propia pestaña. Después, dos caminos para la
+ * misma propuesta: contarla conversando o llenar el formulario de corrido.
  */
 function Nuevo() {
   const { kyc, cargando } = useKyc();
 
   if (cargando) return <p className="mono text-xs text-[var(--muted)]">···</p>;
 
-  if (!kyc)
+  if (!kyc || kyc.estado === "rechazado")
     return (
       <div className="max-w-2xl space-y-6">
-        <div className="border rule p-4">
-          <Pasos pasos={RUTA_PUBLICAR} actual={0} etiqueta="TRAMO" />
-        </div>
-        <div className="border rule p-5 space-y-3">
-          <p className="text-sm leading-relaxed">
-            Para proponer hace falta verificar tu identidad, porque un proyecto
-            recibe dinero de otras personas. Son cuatro datos y toma un minuto.
+        <LineaIdentidad kyc={kyc} />
+        <div className="border rule p-5">
+          <p className="mono text-[11px] text-[var(--muted)]">REQUISITO</p>
+          <p className="text-sm mt-2 leading-relaxed">
+            {kyc
+              ? "Tu verificación fue rechazada y sin ella no se puede proponer. Escríbenos para revisarla."
+              : "Para proponer hace falta verificar tu identidad, porque un proyecto recibe dinero de otras personas. Se hace una vez y toma un minuto."}
           </p>
-          <Link
-            href="/proyectos/verificacion"
-            className="mono text-xs px-4 py-2.5 bg-[var(--solar)] text-[var(--petrol)] font-semibold inline-block"
-          >
-            VERIFICAR IDENTIDAD
-          </Link>
+          {!kyc && (
+            <Link
+              href="/proyectos/identidad"
+              className="mono text-xs px-4 py-2.5 bg-[var(--solar)] text-[var(--petrol)] font-semibold inline-block mt-4"
+            >
+              VERIFICAR IDENTIDAD
+            </Link>
+          )}
         </div>
-      </div>
-    );
-
-  if (kyc.estado === "rechazado")
-    return (
-      <div className="max-w-2xl border rule p-5">
-        <p className="mono text-[11px] text-[var(--solar)]">VERIFICACIÓN RECHAZADA</p>
-        <p className="text-sm mt-2 leading-relaxed">
-          No pudimos verificar tus datos, y sin eso no se puede proponer.
-          Escríbenos para revisarla.
-        </p>
       </div>
     );
 
   return (
     <div className="max-w-2xl space-y-6">
-      <div className="border rule p-4">
-        <Pasos pasos={RUTA_PUBLICAR} actual={1} etiqueta="TRAMO" />
-      </div>
-
-      <p className="mono text-[11px] text-[var(--muted)] leading-relaxed">
-        Identidad {kyc.documento_enmascarado} · {kyc.estado}.{" "}
-        {kyc.estado === "pendiente"
-          ? "Puedes preparar la propuesta mientras se aprueba; se publica después."
-          : "Tu propuesta puede salir a la vitrina cuando pase revisión."}
-      </p>
+      <LineaIdentidad kyc={kyc} />
 
       <div className="grid sm:grid-cols-2 gap-3">
         <Link
@@ -88,7 +69,8 @@ function Nuevo() {
 
       <p className="mono text-[10px] text-[var(--muted)] leading-relaxed">
         En los dos casos queda como borrador. Sale a la vitrina solo después de
-        la revisión, y hasta entonces no recibe aportes.
+        la revisión{kyc.estado === "pendiente" ? " y de que tu identidad quede aprobada" : ""}, y
+        hasta entonces no recibe aportes.
       </p>
     </div>
   );

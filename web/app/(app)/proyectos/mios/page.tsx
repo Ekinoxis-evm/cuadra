@@ -1,12 +1,18 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import Pasos from "@/components/Pasos";
 import ConSesion from "@/components/proyectos/ConSesion";
 import TarjetaProyecto from "@/components/proyectos/TarjetaProyecto";
+import { LineaIdentidad } from "@/components/proyectos/Identidad";
 import { useFetchConSesion, useKyc } from "@/components/proyectos/datos";
-import { RUTA_PUBLICAR, type ProyectoPropio } from "@/lib/proyectos";
+import type { ProyectoPropio } from "@/lib/proyectos";
 
+/**
+ * Lo tuyo. Cada proyecto lleva su avance en su tarjeta; la identidad va en una
+ * línea aparte porque no es un tramo de ningún proyecto. La versión anterior
+ * dibujaba una "ruta de cuatro tramos" por cuenta que sumaba las dos cosas y
+ * decía "Revisión" con un solo borrador guardado.
+ */
 function Mios() {
   const f = useFetchConSesion();
   const { kyc, cargando: cargandoKyc } = useKyc();
@@ -24,61 +30,27 @@ function Mios() {
   if (cargando || cargandoKyc)
     return <p className="mono text-xs text-[var(--muted)]">···</p>;
 
-  // En qué tramo de la ruta está esta cuenta.
-  const publicado = mios.some((p) => p.estado === "publicado");
-  const enCurso = mios.some((p) => ["borrador", "en_revision", "rechazado"].includes(p.estado));
-  const tramo = !kyc ? 0 : publicado ? 3 : enCurso ? 2 : 1;
+  const puedeProponer = !!kyc && kyc.estado !== "rechazado";
 
   return (
-    <div className="max-w-2xl space-y-8">
-      {/* Ruta completa: qué queda hecho, dónde vas, qué falta. */}
-      <div className="border rule p-4">
-        <Pasos pasos={RUTA_PUBLICAR} actual={tramo} etiqueta="TRAMO" />
-      </div>
-
-      <div className="border rule p-4 flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <p className="mono text-[11px] text-[var(--muted)]">IDENTIDAD</p>
-          {kyc ? (
-            <p className="mono text-xs mt-1">
-              Documento {kyc.documento_enmascarado} ·{" "}
-              <span
-                className={
-                  kyc.estado === "aprobado"
-                    ? "text-[var(--alza)]"
-                    : kyc.estado === "rechazado"
-                      ? "text-[var(--solar)]"
-                      : "text-[var(--muted)]"
-                }
-              >
-                {kyc.estado}
-              </span>
-            </p>
-          ) : (
-            <p className="text-sm mt-1 leading-relaxed">
-              Sin verificar. Hace falta para proponer.
-            </p>
-          )}
-        </div>
-        {!kyc ? (
-          <Link
-            href="/proyectos/verificacion"
-            className="mono text-xs px-4 py-2.5 bg-[var(--solar)] text-[var(--petrol)] font-semibold"
-          >
-            VERIFICAR IDENTIDAD
-          </Link>
-        ) : kyc.estado !== "rechazado" ? (
-          <Link
-            href="/proyectos/nuevo"
-            className="mono text-xs px-4 py-2.5 border rule hover:bg-[var(--petrol-2)]"
-          >
-            + PROPONER
-          </Link>
-        ) : null}
-      </div>
+    <div className="max-w-2xl space-y-6">
+      <LineaIdentidad kyc={kyc} />
 
       <div>
-        <h2 className="mono text-[11px] text-[var(--muted)] mb-2">TUS PROYECTOS</h2>
+        <div className="flex items-baseline justify-between gap-4 mb-2">
+          <h2 className="mono text-[11px] text-[var(--muted)]">
+            TUS PROYECTOS{mios.length ? ` · ${mios.length}` : ""}
+          </h2>
+          {puedeProponer && (
+            <Link
+              href="/proyectos/nuevo"
+              className="mono text-[11px] text-[var(--muted)] hover:text-[var(--bone)]"
+            >
+              + proponer
+            </Link>
+          )}
+        </div>
+
         {mios.length ? (
           <div className="space-y-3">
             {mios.map((p) => (
@@ -86,18 +58,29 @@ function Mios() {
             ))}
           </div>
         ) : (
-          <p className="mono text-xs text-[var(--muted)] leading-relaxed">
-            Todavía no has propuesto nada.
-            {kyc && kyc.estado !== "rechazado" && (
-              <>
-                {" "}
-                <Link href="/proyectos/nuevo" className="underline underline-offset-4 hover:text-[var(--bone)]">
-                  Empieza aquí
-                </Link>
-                .
-              </>
-            )}
-          </p>
+          <div className="border rule p-5 space-y-2">
+            <p className="mono text-xs text-[var(--muted)]">Todavía no has propuesto nada.</p>
+            <p className="text-sm leading-relaxed">
+              {puedeProponer ? (
+                <>
+                  <Link href="/proyectos/nuevo" className="underline underline-offset-4 hover:text-[var(--solar)]">
+                    Propón tu primer proyecto
+                  </Link>
+                  . Queda como borrador hasta que lo mandes a revisión.
+                </>
+              ) : kyc ? (
+                "Cuando la identidad quede resuelta podrás proponer."
+              ) : (
+                <>
+                  Primero{" "}
+                  <Link href="/proyectos/identidad" className="underline underline-offset-4 hover:text-[var(--solar)]">
+                    verifica tu identidad
+                  </Link>
+                  ; después propones.
+                </>
+              )}
+            </p>
+          </div>
         )}
       </div>
     </div>
@@ -106,9 +89,7 @@ function Mios() {
 
 export default function PaginaMios() {
   return (
-    <ConSesion
-      mensaje="Para ver tus proyectos hace falta entrar a tu cuenta. La vitrina se ve sin ella."
-    >
+    <ConSesion mensaje="Para ver tus proyectos hace falta entrar a tu cuenta. La vitrina se ve sin ella.">
       <Mios />
     </ConSesion>
   );
