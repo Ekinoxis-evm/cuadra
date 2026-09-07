@@ -8,8 +8,9 @@ import Perfil from "@/components/cuenta/Perfil";
 import Wallet from "@/components/cuenta/Wallet";
 import Favoritos from "@/components/cuenta/Favoritos";
 import Onboarding from "@/components/cuenta/Onboarding";
+import VerificacionCuenta from "@/components/cuenta/Verificacion";
 
-const TABS = ["intereses", "favoritos", "wallet", "perfil"] as const;
+const TABS = ["intereses", "favoritos", "wallet", "perfil", "verificacion"] as const;
 type Tab = (typeof TABS)[number];
 
 function Contenido() {
@@ -41,7 +42,8 @@ function Contenido() {
 
   return (
     <>
-      <NavApp tabActiva={tab} />
+      {/* La verificación es parte de la cuenta: en el nav se ve como Ajustes. */}
+      <NavApp tabActiva={tab === "verificacion" ? "perfil" : tab} />
       <main className="max-w-5xl mx-auto px-4 py-6">
         {necesitaOnboarding ? (
           <Onboarding
@@ -54,6 +56,7 @@ function Contenido() {
         {tab === "favoritos" && <Favoritos />}
         {tab === "wallet" && <Wallet />}
         {tab === "perfil" && <Perfil />}
+        {tab === "verificacion" && <VerificacionCuenta />}
         </>
         )}
       </main>

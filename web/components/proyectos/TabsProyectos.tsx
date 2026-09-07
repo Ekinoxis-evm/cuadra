@@ -11,7 +11,6 @@ import { usePathname } from "next/navigation";
 const TABS = [
   { href: "/proyectos", label: "VITRINA", nota: "Lo publicado" },
   { href: "/proyectos/mios", label: "MIS PROYECTOS", nota: "Lo tuyo, en cualquier tramo" },
-  { href: "/proyectos/identidad", label: "IDENTIDAD", nota: "Una vez por cuenta; requisito para proponer" },
   { href: "/proyectos/nuevo", label: "PROPONER", nota: "Propuesta nueva" },
 ];
 
@@ -19,7 +18,6 @@ const TABS = [
 export function tabDe(pathname: string): string {
   if (pathname === "/proyectos") return "/proyectos";
   if (pathname.startsWith("/proyectos/nuevo")) return "/proyectos/nuevo";
-  if (pathname.startsWith("/proyectos/identidad")) return "/proyectos/identidad";
   return "/proyectos/mios";
 }
 

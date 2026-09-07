@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePrivy, useLinkAccount } from "@privy-io/react-auth";
 import type { PasskeyWithMetadata } from "@privy-io/react-auth";
@@ -263,6 +264,14 @@ export default function Perfil() {
           <h2 className="mono text-[11px] text-[var(--muted)] mb-2">CUENTA</h2>
           <Dato k="correo" v={user?.email?.address ?? "—"} />
           <Dato k="entras con" v={entradas.join(" · ") || "—"} />
+          <Dato
+            k="verificación"
+            v={
+              <Link href="/cuenta?tab=verificacion" className="mono text-xs hover:text-[var(--solar)]">
+                ver estado <span className="text-[var(--solar)] ml-2">→</span>
+              </Link>
+            }
+          />
           <Dato
             k="wallet"
             v={

@@ -3,13 +3,13 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import ConSesion from "@/components/proyectos/ConSesion";
 import TarjetaProyecto from "@/components/proyectos/TarjetaProyecto";
-import { LineaIdentidad } from "@/components/proyectos/Identidad";
+import { RequisitoVerificacion, RUTA_VERIFICACION } from "@/components/cuenta/Verificacion";
 import { useFetchConSesion, useKyc } from "@/components/proyectos/datos";
 import type { ProyectoPropio } from "@/lib/proyectos";
 
 /**
- * Lo tuyo. Cada proyecto lleva su avance en su tarjeta; la identidad va en una
- * línea aparte porque no es un tramo de ningún proyecto. La versión anterior
+ * Lo tuyo. Cada proyecto lleva su avance en su tarjeta; la verificación de la
+ * cuenta va en una línea aparte porque no es un tramo de ningún proyecto. La versión anterior
  * dibujaba una "ruta de cuatro tramos" por cuenta que sumaba las dos cosas y
  * decía "Revisión" con un solo borrador guardado.
  */
@@ -34,7 +34,7 @@ function Mios() {
 
   return (
     <div className="max-w-2xl space-y-6">
-      <LineaIdentidad kyc={kyc} />
+      <RequisitoVerificacion kyc={kyc} />
 
       <div>
         <div className="flex items-baseline justify-between gap-4 mb-2">
@@ -69,12 +69,12 @@ function Mios() {
                   . Queda como borrador hasta que lo mandes a revisión.
                 </>
               ) : kyc ? (
-                "Cuando la identidad quede resuelta podrás proponer."
+                "Cuando la verificación de la cuenta quede resuelta podrás proponer."
               ) : (
                 <>
                   Primero{" "}
-                  <Link href="/proyectos/identidad" className="underline underline-offset-4 hover:text-[var(--solar)]">
-                    verifica tu identidad
+                  <Link href={RUTA_VERIFICACION} className="underline underline-offset-4 hover:text-[var(--solar)]">
+                    verifica tu cuenta
                   </Link>
                   ; después propones.
                 </>
