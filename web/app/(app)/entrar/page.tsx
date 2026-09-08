@@ -18,7 +18,7 @@ import Esfera from "@/components/Esfera";
  * El destino viaja en ?destino= para que un muro pueda mandar aquí y devolver
  * a la persona a la sección que estaba mirando.
  */
-const DESTINO_POR_DEFECTO = "/cuenta?tab=intereses";
+const DESTINO_POR_DEFECTO = "/cuenta/asistente";
 
 function Puerta() {
   const router = useRouter();

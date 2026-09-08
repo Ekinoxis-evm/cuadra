@@ -67,7 +67,7 @@ export default function Landing() {
               VER EL TABLERO
             </Link>
             <Link
-              href="/cuenta?tab=intereses"
+              href="/cuenta/asistente"
               className="mono text-xs px-5 py-3 border rule hover:bg-[var(--petrol-2)]"
             >
               HABLAR CON EL ASISTENTE

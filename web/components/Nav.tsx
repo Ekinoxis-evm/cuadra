@@ -11,33 +11,26 @@ import { usePathname } from "next/navigation";
 const ITEMS = [
   { href: "/", label: "INICIO" },
   { href: "/buscar", label: "BUSCAR" },
-  { href: "/cuenta?tab=intereses", label: "ASISTENTE", destacado: true },
-  { href: "/cuenta?tab=favoritos", label: "GUARDADOS" },
-  { href: "/cuenta?tab=wallet", label: "WALLET" },
+  { href: "/cuenta/asistente", label: "ASISTENTE", destacado: true },
+  { href: "/cuenta/guardados", label: "GUARDADOS" },
+  { href: "/cuenta/wallet", label: "WALLET" },
   { href: "/proyectos", label: "PROYECTOS" },
-  { href: "/cuenta?tab=perfil", label: "AJUSTES" },
+  { href: "/cuenta/ajustes", label: "AJUSTES" },
 ];
 
 export default function Nav({
-  tabActiva,
   acciones,
 }: {
-  tabActiva?: string;
   /** Zona derecha del header. La landing pasa un enlace simple para no cargar
    *  Privy; las rutas con sesión pasan <AuthButton />. */
   acciones?: React.ReactNode;
 }) {
   const pathname = usePathname();
 
-  const esActivo = (href: string) => {
-    const [ruta, query] = href.split("?");
-    // Una sección con subpáginas (/proyectos/…) sigue siendo la misma sección.
-    const misma =
-      ruta === pathname || (ruta !== "/" && pathname.startsWith(`${ruta}/`));
-    if (!misma) return false;
-    if (!query) return true;
-    return query.split("=")[1] === tabActiva;
-  };
+  // Una sección con subpáginas (/cuenta/wallet/enviar) sigue siendo la misma
+  // sección: la pestaña se resalta por prefijo.
+  const esActivo = (href: string) =>
+    href === pathname || (href !== "/" && pathname.startsWith(`${href}/`));
 
   return (
     <header className="border-b rule">
