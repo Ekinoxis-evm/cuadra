@@ -9,7 +9,7 @@ import CabeceraProyecto from "@/components/proyectos/CabeceraProyecto";
 import Evaluacion from "@/components/proyectos/Evaluacion";
 import { useFetchConSesion, useProyectoPropio } from "@/components/proyectos/datos";
 import { fmtCOP } from "@/lib/types";
-import { avance, faltantes, type ProponenteId } from "@/lib/intake";
+import { avance, conTipo, faltantes, type ProponenteId } from "@/lib/intake";
 import {
   EDITABLES,
   QUE_SIGUE,
@@ -61,11 +61,11 @@ function Detalle({ id }: { id: string }) {
 
   // La entrevista: cuánto va y si vale la pena seguirla.
   const proponente = p.proponente as ProponenteId;
-  const respuestas = p.respuestas ?? {};
+  const respuestas = conTipo(p.tipo, p.respuestas ?? {});
   const avanceEntrevista = avance(proponente, respuestas);
   const faltanRespuestas = faltantes(proponente, respuestas).length;
   const entrevistaCompleta = !!p.intake_completo_at || faltanRespuestas === 0;
-  const entrevistaEmpezada = Object.keys(respuestas).length > 0;
+  const entrevistaEmpezada = Object.keys(p.respuestas ?? {}).length > 0;
 
   async function enviarARevision() {
     setErrorEnvio(null);

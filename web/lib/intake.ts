@@ -25,6 +25,7 @@
  */
 
 import type { Respuestas } from "./types";
+import { ESTADOS_OBRA } from "./proyectos";
 
 // --------------------------------------------------------------- el régimen
 
@@ -131,6 +132,106 @@ export interface Pregunta {
   /** Solo se pregunta si esto da true. Evita interrogatorios que no aplican. */
   si?: (r: Respuestas) => boolean;
 }
+
+// ---------------------------------------------------------- preguntas de obra
+// Lo que la propuesta ES: qué se va a hacer, dónde, en qué estado está y
+// cuánto cuesta. Son las mismas casillas del formulario y las columnas que la
+// revisión valida. Cuando la entrevista no las preguntaba, una propuesta
+// contada conversando terminaba con cuarenta respuestas y sin título, sin
+// meta ni barrio: no se podía mandar a revisión y nadie sabía por qué.
+
+export const OBRA: Pregunta[] = [
+  {
+    id: "descripcion",
+    pregunta: "Cuéntame qué se va a hacer: qué se interviene, con qué alcance y quién se beneficia.",
+    campo: "Qué se va a hacer",
+    motivo:
+      "Es la obra concreta contra la que se compara el presupuesto. Describe la obra, no la " +
+      "necesidad, con al menos dos o tres frases; una línea suelta no alcanza para revisar.",
+    tipo: "texto_largo",
+    requerida: true,
+    eje: "predio",
+  },
+  {
+    id: "titulo",
+    pregunta: "¿Cómo lo llamamos? Una línea que diga qué es y dónde queda.",
+    campo: "Título",
+    motivo: "Es lo que se ve en la vitrina. Propón uno a partir de lo que ya contó y confírmalo.",
+    tipo: "texto",
+    requerida: true,
+    eje: "predio",
+  },
+  {
+    id: "barrio",
+    pregunta: "¿En qué barrio de Cali queda?",
+    campo: "Barrio",
+    motivo:
+      "El presupuesto se compara con el precio por metro real de ese barrio. Como lo conoce la gente.",
+    tipo: "texto",
+    requerida: true,
+    eje: "predio",
+  },
+  {
+    id: "direccion",
+    pregunta: "¿Cuál es la dirección exacta?",
+    campo: "Dirección",
+    motivo: "No se publica; solo la ve quien revisa, para ubicar el predio. Si prefiere no darla ahora, sigue.",
+    tipo: "texto",
+    requerida: false,
+    eje: "predio",
+  },
+  {
+    id: "estado_obra",
+    pregunta: "¿En qué estado está el espacio hoy, antes de la obra?",
+    campo: "Estado del espacio",
+    motivo:
+      "La condición de partida decide qué obra tiene sentido. Si el tipo de obra es 'nuevo', " +
+      "aplican lote, cimientos u obra_gris; si es 'reconstruccion', obra_gris, " +
+      "habitable_deteriorada, inhabitable o en_uso.",
+    tipo: "opcion",
+    opciones: ESTADOS_OBRA.map((e) => ({ id: e.id, label: `${e.titulo}: ${e.detalle}` })),
+    requerida: true,
+    eje: "predio",
+  },
+  {
+    id: "estado_detalle",
+    pregunta: "¿Qué daños concretos hay, desde cuándo, y hay algún riesgo hoy?",
+    campo: "Detalle del estado",
+    motivo: "Le da a la revisión el matiz que la opción cerrada no tiene. Grietas, humedades, servicios caídos.",
+    tipo: "texto_largo",
+    requerida: false,
+    eje: "predio",
+  },
+  {
+    id: "area_m2",
+    pregunta: "¿Cuántos metros cuadrados tiene, más o menos? Construidos, o del lote si no hay nada.",
+    campo: "Área (m²)",
+    motivo: "Sirve para calcular el costo por metro y compararlo con el barrio. Un aproximado basta.",
+    tipo: "numero",
+    requerida: false,
+    eje: "predio",
+  },
+  {
+    id: "meta_cop",
+    pregunta: "¿Cuánto cuesta la obra completa, en pesos?",
+    campo: "Meta de recaudo (COP)",
+    motivo:
+      "Es la meta que se publica. Si tiene presupuesto o cotización, que coincida con eso; " +
+      "si es un estimado, que lo diga.",
+    tipo: "moneda",
+    requerida: true,
+    eje: "presupuesto",
+  },
+  {
+    id: "plazo_meses",
+    pregunta: "¿En cuántos meses estaría lista la obra, contando desde que se complete el recaudo?",
+    campo: "Plazo de obra (meses)",
+    motivo: "Quien aporta quiere saber cuándo. Entre 1 y 120.",
+    tipo: "numero",
+    requerida: false,
+    eje: "viabilidad",
+  },
+];
 
 // ------------------------------------------------------- preguntas del predio
 // Comunes a todos los tipos: el inmueble y la obra no cambian según quién
@@ -661,12 +762,44 @@ const POR_PROPONENTE: Record<ProponenteId, Pregunta[]> = {
 };
 
 /**
- * El guion completo para un proponente: primero quién es, después el predio.
- * Ese orden importa — arrancar por la matrícula inmobiliaria a alguien que
- * acaba de perder la casa es la forma más rápida de que cierre la pestaña.
+ * El guion completo para un proponente: primero quién es, después la obra y
+ * al final el predio. Ese orden importa — arrancar por la matrícula
+ * inmobiliaria a alguien que acaba de perder la casa es la forma más rápida
+ * de que cierre la pestaña.
  */
 export function guion(proponente: ProponenteId): Pregunta[] {
-  return [...POR_PROPONENTE[proponente], ...PREDIO];
+  return [...POR_PROPONENTE[proponente], ...OBRA, ...PREDIO];
+}
+
+/**
+ * El tipo de obra vive en la fila del proyecto, no en las respuestas, pero
+ * las condiciones del guion lo leen de ahí (`r.tipo === "nuevo"`). Sin esto,
+ * la pregunta de la licencia no se hacía nunca. Se mezcla al evaluar, no se
+ * guarda: no es una respuesta.
+ */
+export const conTipo = (tipo: string | null | undefined, r: Respuestas): Respuestas =>
+  tipo ? { tipo, ...r } : r;
+
+/**
+ * Lo que de las respuestas va también a columnas propias del proyecto. Son
+ * las que la revisión valida y la vitrina muestra; dejarlas solo en el JSON
+ * hacía que una propuesta contada conversando no se pudiera enviar.
+ */
+export function columnasDeRespuestas(r: Respuestas): Record<string, unknown> {
+  const c: Record<string, unknown> = {};
+  const texto = (k: string) => (typeof r[k] === "string" && (r[k] as string).trim() ? (r[k] as string).trim() : undefined);
+  if (texto("titulo")) c.titulo = texto("titulo");
+  if (texto("descripcion")) c.descripcion = texto("descripcion");
+  if (texto("barrio")) c.barrio = texto("barrio");
+  if (texto("direccion")) c.direccion = texto("direccion");
+  if (texto("estado_detalle")) c.estado_detalle = texto("estado_detalle");
+  if (typeof r.estado_obra === "string" && ESTADOS_OBRA.some((e) => e.id === r.estado_obra))
+    c.estado_obra = r.estado_obra;
+  if (typeof r.area_m2 === "number" && r.area_m2 > 0) c.area_m2 = r.area_m2;
+  if (typeof r.meta_cop === "number" && r.meta_cop > 0) c.meta_cop = Math.round(r.meta_cop);
+  if (typeof r.plazo_meses === "number" && Number.isInteger(r.plazo_meses) && r.plazo_meses >= 1 && r.plazo_meses <= 120)
+    c.plazo_meses = r.plazo_meses;
+  return c;
 }
 
 /** Las que aplican dadas las respuestas de hasta ahora. */

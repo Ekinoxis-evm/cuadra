@@ -9,7 +9,7 @@ import {
   HERRAMIENTAS_INTAKE, MODELO_INTAKE, SISTEMA_INTAKE, bloqueada, estadoIntake,
   normalizar,
 } from "@/lib/intake-agente";
-import { PROPONENTES, avance, faltantes } from "@/lib/intake";
+import { PROPONENTES, avance, columnasDeRespuestas, conTipo, faltantes } from "@/lib/intake";
 import { TIPOS } from "@/lib/proyectos";
 import type { Respuestas } from "@/lib/types";
 import type { ProponenteId } from "@/lib/intake";
@@ -90,7 +90,7 @@ export async function GET(req: NextRequest) {
   }
 
   const proponente = p.proponente as ProponenteId;
-  const respuestas = (p.respuestas ?? {}) as Respuestas;
+  const respuestas = conTipo(p.tipo, (p.respuestas ?? {}) as Respuestas);
   return Response.json({
     proponente,
     tipo: p.tipo,
@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
   if (idEntrante) {
     const { data } = await db
       .from("proyectos")
-      .select("id, privy_did, proponente, respuestas, estado")
+      .select("id, privy_did, proponente, tipo, respuestas, estado")
       .eq("id", idEntrante)
       .maybeSingle();
 
@@ -146,7 +146,7 @@ export async function POST(req: NextRequest) {
 
     proyectoId = idEntrante;
     proponente = data.proponente as ProponenteId;
-    respuestas = (data.respuestas ?? {}) as Respuestas;
+    respuestas = conTipo(data.tipo, (data.respuestas ?? {}) as Respuestas);
   } else {
     const p = PROPONENTES.find((x) => x.id === body.proponente);
     const t = TIPOS.find((x) => x.id === body.tipo);
@@ -174,7 +174,7 @@ export async function POST(req: NextRequest) {
 
     proyectoId = data.id;
     proponente = p.id as ProponenteId;
-    respuestas = {};
+    respuestas = conTipo(t.id, {});
   }
 
   // ------------------------------------------------------------- historial
@@ -304,10 +304,16 @@ export async function POST(req: NextRequest) {
             const listo = pendientes.length === 0;
             const corte = bloqueada(respuestas);
 
+            // Lo que es columna del proyecto se escribe también como columna:
+            // título, meta, barrio… Es lo que la revisión valida y la vitrina
+            // muestra. `tipo` no va en el JSON: es de la fila.
+            const { tipo: _tipo, ...guardables } = respuestas;
+            void _tipo;
             await db
               .from("proyectos")
               .update({
-                respuestas,
+                respuestas: guardables,
+                ...columnasDeRespuestas(aceptadas),
                 regimen: corte ? "valores" : "donacion",
                 intake_completo_at: listo ? new Date().toISOString() : null,
                 updated_at: new Date().toISOString(),

@@ -21,7 +21,7 @@ import {
   RUBRICA_VERSION, SISTEMA_EVALUACION, bandaDe, puntajeFinal,
   type Veredicto,
 } from "./evaluacion";
-import { aplicables, regimenDe, type ProponenteId } from "./intake";
+import { aplicables, regimenDe, type ProponenteId, conTipo } from "./intake";
 import { registrarConsumo, sumarUso, usoVacio } from "./consumo";
 import type { Respuestas } from "./types";
 
@@ -83,7 +83,7 @@ export function expediente(p: Proyecto, kyc?: string | null): string {
     "--- Entrevista ---",
   ].filter(Boolean);
 
-  for (const q of aplicables(p.proponente, p.respuestas)) {
+  for (const q of aplicables(p.proponente, conTipo(p.tipo, p.respuestas))) {
     const v = p.respuestas[q.id];
     const vacio = v === undefined || v === null || v === "";
     l.push(`[${q.eje}] ${q.pregunta}`);

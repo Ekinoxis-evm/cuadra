@@ -3,7 +3,7 @@ import { didDe, noAutorizado } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { saldo } from "@/lib/consumo";
 import { evaluar, ESFUERZO_GRIS, type Proyecto } from "@/lib/evaluador";
-import { BLOQUEO_VALORES, faltantes, regimenDe } from "@/lib/intake";
+import { BLOQUEO_VALORES, conTipo, faltantes, regimenDe } from "@/lib/intake";
 import type { ProponenteId } from "@/lib/intake";
 import type { Respuestas } from "@/lib/types";
 
@@ -37,7 +37,7 @@ export async function POST(
   if (!p || p.privy_did !== userId)
     return Response.json({ error: "Proyecto no encontrado" }, { status: 404 });
 
-  const respuestas = (p.respuestas ?? {}) as Respuestas;
+  const respuestas = conTipo(p.tipo, (p.respuestas ?? {}) as Respuestas);
   const proponente = p.proponente as ProponenteId;
 
   // Ofrecer retorno no es un puntaje bajo: es una propuesta que esta

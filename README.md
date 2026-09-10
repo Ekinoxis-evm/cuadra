@@ -111,6 +111,12 @@ uno es distinto: a una persona su cédula y su relación con el predio; a una em
 certificado de existencia y representación; a una ESAL su personería jurídica y si está
 en el Régimen Tributario Especial.
 
+El guion arranca por quién propone, sigue con la obra —qué se va a hacer, título, barrio,
+estado del espacio, meta y plazo— y termina con el predio. Las respuestas de la obra se
+escriben también como columnas del proyecto (`columnasDeRespuestas`), que son las que la
+revisión valida y la vitrina muestra: así una propuesta contada conversando se puede
+mandar a revisión sin pasar por el formulario.
+
 El reparto es deliberado: **el modelo pone el tono, el código pone el guion.** Cuáles
 preguntas aplican y cuándo se acabó salen de `intake.ts`. Si el modelo decidiera cuándo
 terminó, dos propuestas idénticas recorrerían preguntas distintas y la rúbrica dejaría
@@ -127,8 +133,9 @@ está obligado a llamar `estadisticas_barrio` y comparar la meta contra el área
 $/m² real de ese barrio. Sin ese dato el eje va como `evaluable: false` — un eje sin
 datos no puntúa cero, porque cero significa "lo evalué y está mal".
 
-> ⚠️ La rúbrica y el esquema están escritos, pero **la llamada al evaluador todavía no
-> existe**. Ninguna propuesta se ha evaluado.
+La corre `/api/proyectos/[id]/evaluacion` y cada corrida queda en `evaluaciones` con su
+versión de rúbrica. Quien propone la lanza desde la página de su proyecto; la cola de
+revisión (`/revision`) muestra el veredicto al lado de cada propuesta.
 
 ### Créditos
 No se puede cobrar lo que no se mide: `consumo` guarda el `usage` exacto de cada

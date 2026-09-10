@@ -183,7 +183,8 @@ export function estadoIntake(
   estancada = 0,
 ): string {
   let pendientes = faltantes(proponente, r);
-  const contestadas = Object.entries(r).filter(([, v]) => v !== null && v !== "");
+  // `tipo` viene de la fila, no de la entrevista: se dice aparte.
+  const contestadas = Object.entries(r).filter(([k, v]) => k !== "tipo" && v !== null && v !== "");
 
   const lineas: string[] = [
     // El modelo no sabe qué día es, y sin esto "el mes pasado" o "este año" se
@@ -194,6 +195,7 @@ export function estadoIntake(
     `referencia relativa ("el mes pasado", "este año", "hace dos meses").`,
     "",
     `Tipo de proponente: ${proponente}.`,
+    r.tipo ? `Tipo de obra: ${r.tipo} (ya escogido; no lo preguntes).` : "",
     `Avance: ${Math.round(avance(proponente, r) * 100)}%.`,
   ];
 
