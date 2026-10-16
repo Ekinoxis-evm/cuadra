@@ -30,7 +30,11 @@ export const usoVacio = (): Uso => ({
 });
 
 /** Acumula el usage de una respuesta sobre el total del turno. */
-export function sumarUso(acc: Uso, modelo: string, usage: Anthropic.Usage): Uso {
+export function sumarUso(
+  acc: Uso,
+  modelo: string,
+  usage: Anthropic.Usage | Anthropic.Beta.BetaUsage,
+): Uso {
   acc.entrada += usage.input_tokens ?? 0;
   acc.salida += usage.output_tokens ?? 0;
   acc.cache_escritura += usage.cache_creation_input_tokens ?? 0;

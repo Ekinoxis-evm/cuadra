@@ -23,44 +23,67 @@ import type Anthropic from "@anthropic-ai/sdk";
 
 /**
  * USD por millón de tokens, tal como factura la API. La escritura de caché
- * cuesta 1,25× la entrada y la lectura 0,1×; sin esas dos filas el cálculo se
- * va largo justamente en las conversaciones cacheadas, que son la mayoría.
+ * cuesta 1,25× la entrada; la lectura, 0,1× — salvo en Opus 5.5, donde es
+ * 0,05×. Sin esas filas el cálculo se va largo justamente en las
+ * conversaciones cacheadas, que son la mayoría.
+ *
+ * Opus 5 y 4.8 siguen aquí aunque el chat ya no los pida: son a donde el
+ * fallback de rechazos manda la vuelta cuando Opus 5.5 declina, y esa vuelta
+ * se cobra a la tarifa del modelo que la contestó.
  */
-export const TARIFAS = {
+export const TARIFAS: Record<string, { entrada: number; salida: number; lectura?: number }> = {
   "claude-fable-5": { entrada: 10, salida: 50 },
+  "claude-opus-5-5": { entrada: 4, salida: 20, lectura: 0.05 },
   "claude-opus-5": { entrada: 5, salida: 25 },
+  "claude-opus-4-8": { entrada: 5, salida: 25 },
   "claude-sonnet-5": { entrada: 2, salida: 10 },
   "claude-haiku-4-5": { entrada: 1, salida: 5 },
-} as const;
-
-export type ModeloTarifado = keyof typeof TARIFAS;
+};
 
 const MULT_CACHE_ESCRITURA = 1.25;
 const MULT_CACHE_LECTURA = 0.1;
 
-/** Costo real en USD de una llamada, desde el `usage` que devolvió la API. */
-export function costoUSD(
-  modelo: string,
-  usage: Anthropic.Usage | Anthropic.MessageDeltaUsage,
-): number {
-  const t = TARIFAS[modelo as ModeloTarifado];
+interface UsoTokens {
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  cache_creation_input_tokens?: number | null;
+  cache_read_input_tokens?: number | null;
+}
+
+function costoTramo(modelo: string, u: UsoTokens): number {
+  const t = TARIFAS[modelo];
   // Un modelo sin tarifa conocida no se cobra en silencio a cero: se deja
   // pasar y se registra, para que aparezca en el consumo y se note.
   if (!t) return 0;
 
-  const u = usage as Anthropic.Usage;
-  const entrada = u.input_tokens ?? 0;
-  const salida = u.output_tokens ?? 0;
-  const escritura = u.cache_creation_input_tokens ?? 0;
-  const lectura = u.cache_read_input_tokens ?? 0;
-
   return (
-    (entrada * t.entrada +
-      salida * t.salida +
-      escritura * t.entrada * MULT_CACHE_ESCRITURA +
-      lectura * t.entrada * MULT_CACHE_LECTURA) /
+    ((u.input_tokens ?? 0) * t.entrada +
+      (u.output_tokens ?? 0) * t.salida +
+      (u.cache_creation_input_tokens ?? 0) * t.entrada * MULT_CACHE_ESCRITURA +
+      (u.cache_read_input_tokens ?? 0) * t.entrada * (t.lectura ?? MULT_CACHE_LECTURA)) /
     1_000_000
   );
+}
+
+/**
+ * Costo real en USD de una llamada, desde el `usage` que devolvió la API.
+ *
+ * Con fallback de rechazos una sola respuesta puede venir de dos modelos: el
+ * pedido, que declinó a mitad, y el que terminó. `usage.iterations` trae un
+ * tramo por modelo; cuando está, se cobra tramo por tramo con la tarifa de
+ * quien lo generó. Un tramo sin `model` es del modelo pedido.
+ */
+export function costoUSD(
+  modelo: string,
+  usage: Anthropic.Usage | Anthropic.MessageDeltaUsage | Anthropic.Beta.BetaUsage,
+): number {
+  const tramos = (usage as Anthropic.Beta.BetaUsage).iterations as
+    | (UsoTokens & { model?: string | null })[]
+    | null
+    | undefined;
+  if (tramos?.length)
+    return tramos.reduce((s, it) => s + costoTramo(it.model ?? modelo, it), 0);
+  return costoTramo(modelo, usage as UsoTokens);
 }
 
 // ------------------------------------------------------------------ créditos

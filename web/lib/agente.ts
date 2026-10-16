@@ -1,8 +1,40 @@
 import type Anthropic from "@anthropic-ai/sdk";
+
+type MessageParam = Anthropic.Beta.BetaMessageParam;
+type ContentBlockParam = Anthropic.Beta.BetaContentBlockParam;
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BarrioStat, Listing, Preferencias } from "./types";
 
-export const MODELO = "claude-opus-5";
+export const MODELO = "claude-opus-5-5";
+
+/**
+ * Cuánto piensa el modelo por turno. En Opus 5.5 el pensamiento no se apaga:
+ * `effort` es la única perilla de latencia y costo. El default de la API es
+ * `medium` y se pone explícito para que un cambio de default no mueva la
+ * factura en silencio. `low` es lo siguiente a medir: el chat es búsqueda con
+ * filtros, no razonamiento largo, pero antes de bajarlo hay que comparar
+ * respuestas reales.
+ */
+export const ESFUERZO = "medium" as const;
+
+/**
+ * Betas del chat, cada una por una razón:
+ * - server-side-fallback: si Opus 5.5 declina por un falso positivo de sus
+ *   clasificadores, la API reintenta en otro modelo dentro de la misma
+ *   llamada en vez de dejar al usuario sin respuesta.
+ * - thinking-display-updates: en Opus 5.5 lo que el modelo dice entre
+ *   herramientas ("busco en Pance…") llega como bloque de thinking y, sin
+ *   esto, vacío. Con `display: "updates"` llega como nota corta que la UI
+ *   muestra mientras busca.
+ * - thinking-binding-controls: los hilos viejos se armaron con la memoria en
+ *   el `system`, que cambiaba entre turnos. Con `drop_block` la API descarta
+ *   el razonamiento que ya no calza en vez de responder 400.
+ */
+export const BETAS = [
+  "server-side-fallback-2026-07-01",
+  "thinking-display-updates-2026-08-18",
+  "thinking-binding-controls-2026-08-01",
+];
 
 /** Columnas que la UI necesita para pintar una tarjeta completa. */
 const COLS_LISTING =
@@ -23,13 +55,23 @@ Cómo trabajas:
   acabados, tipo de espacio) y tradúcela a criterios de búsqueda concretos.
 - Usa estadisticas_barrio cuando pregunten si un precio es caro o barato. Tienes la
   mediana y el $/m² por barrio: úsalos en vez de opinar sin datos.
+- Antes de cada búsqueda di en una frase corta qué vas a buscar ("Busco aptos de
+  3 habitaciones en Pance por menos de 3 millones"). La persona ve esa frase
+  mientras esperas los resultados.
 
 Tono: directo y breve, español colombiano, sin jerga de bienes raíces ni exageración.
 Los precios van en pesos colombianos. Nunca inventes inmuebles ni precios: todo lo que
 menciones debe salir de buscar_inmuebles. Si no hay resultados, dilo y propón aflojar
 un filtro concreto.`;
 
-export const HERRAMIENTAS: Anthropic.Tool[] = [
+/**
+ * Sin `strict: true`, a propósito. Se probó contra la API (oct 2026) y con
+ * strict el modelo pedía filtrar por barrio y precio pero esos campos
+ * opcionales no llegaban en el input: buscaba en toda Cali, se daba cuenta y
+ * reintentaba hasta rendirse. Sin strict llegan todos a la primera. Los
+ * handlers ya toleran tipos raros (Number(), Array.isArray()).
+ */
+export const HERRAMIENTAS: Anthropic.Beta.BetaTool[] = [
   {
     name: "buscar_inmuebles",
     description:
@@ -141,6 +183,22 @@ function paraModelo(l: Listing) {
   };
 }
 
+/**
+ * Filtro de barrios sin importar mayúsculas. La base guarda "Valle Del Lili"
+ * tal como lo escribe el portal, el modelo pide "Valle del Lili", y con un
+ * `in` exacto eso daba cero resultados: el agente gastaba dos o tres vueltas
+ * adivinando la capitalización. `ilike` sin comodines es igualdad sin
+ * mayúsculas; se quitan `%` y `_` para que un nombre no se vuelva patrón, y
+ * las comillas para no romper la sintaxis de `or` de PostgREST.
+ */
+function filtroBarrios(barrios: string[]): string {
+  return barrios
+    .map((b) => String(b).replace(/["\\%_]/g, "").trim())
+    .filter(Boolean)
+    .map((b) => `barrio.ilike."${b}"`)
+    .join(",");
+}
+
 export interface ResultadoBusqueda {
   /** Texto compacto que vuelve al modelo como tool_result. */
   paraModelo: string;
@@ -157,7 +215,7 @@ export async function buscarInmuebles(
 
   if (input.operacion) q = q.eq("operacion", input.operacion as string);
   if (Array.isArray(input.barrios) && input.barrios.length)
-    q = q.in("barrio", input.barrios as string[]);
+    q = q.or(filtroBarrios(input.barrios as string[]));
   if (input.precio_min) q = q.gte("price_cop", input.precio_min as number);
   if (input.precio_max) q = q.lte("price_cop", input.precio_max as number);
   if (input.habs_min) q = q.gte("habs", input.habs_min as number);
@@ -211,7 +269,7 @@ export async function estadisticasBarrio(
     .select("*")
     .eq("operacion", (input.operacion as string) ?? "arriendo");
   if (Array.isArray(input.barrios) && input.barrios.length)
-    q = q.in("barrio", input.barrios as string[]);
+    q = q.or(filtroBarrios(input.barrios as string[]));
 
   const { data, error } = await q.order("n", { ascending: false }).limit(25);
   if (error)
@@ -297,9 +355,9 @@ export async function leerPreferencias(
  * Devuelve un arreglo nuevo: `messages` se persiste en la tabla `mensajes` y
  * al rehidratar una conversación no queremos revivir marcas de caché viejas.
  */
-export function conCache(
-  messages: Anthropic.MessageParam[],
-): Anthropic.MessageParam[] {
+export function conCache<M extends Anthropic.MessageParam | MessageParam>(
+  messages: M[],
+): M[] {
   // Menos de dos mensajes no tiene prefijo que valga la pena cachear, y por
   // debajo del mínimo cacheable la marca no hace nada salvo ocupar un cupo.
   if (messages.length < 2) return messages;
@@ -309,11 +367,13 @@ export function conCache(
   if (messages.length >= 4) marcas.add(messages.length - 3);
 
   return messages.map((m, i) => {
-    if (!marcas.has(i)) return m;
+    // El mensaje de sistema con la memoria va sin marca: es corto y solo
+    // ocupa el último lugar en el primer turno, donde no hay prefijo que leer.
+    if (!marcas.has(i) || m.role === "system") return m;
 
     // El bloque va al final del contenido, así que el contenido tiene que ser
     // bloques. Un `content` de texto plano se convierte.
-    const bloques: Anthropic.ContentBlockParam[] =
+    const bloques: ContentBlockParam[] =
       typeof m.content === "string"
         ? [{ type: "text", text: m.content }]
         : [...m.content];
@@ -329,8 +389,8 @@ export function conCache(
     bloques[bloques.length - 1] = {
       ...ultimo,
       cache_control: { type: "ephemeral" },
-    } as Anthropic.ContentBlockParam;
+    } as ContentBlockParam;
 
-    return { ...m, content: bloques };
+    return { ...m, content: bloques } as M;
   });
 }

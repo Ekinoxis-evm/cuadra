@@ -23,6 +23,9 @@ export default function ChatIntereses() {
   const [entrada, setEntrada] = useState("");
   const [fotos, setFotos] = useState<{ media_type: string; data: string; url: string }[]>([]);
   const [estado, setEstado] = useState<EstadoEsfera>("reposo");
+  // La nota de avance del modelo mientras busca ("Busco aptos en Pance…").
+  // Solo vive mientras no hay respuesta escrita: después sobra.
+  const [progreso, setProgreso] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [conversacionId, setConversacionId] = useState<string | null>(null);
   const [hilos, setHilos] = useState<{ id: string; titulo: string | null; updated_at: string }[]>([]);
@@ -112,6 +115,7 @@ export default function ChatIntereses() {
     setEntrada("");
     setFotos([]);
     setEstado("pensando");
+    setProgreso("");
 
     try {
       const token = await getAccessToken();
@@ -139,8 +143,11 @@ export default function ChatIntereses() {
               ? h
               : [{ id, titulo: texto.slice(0, 80), updated_at: new Date().toISOString() }, ...h],
           );
+        } else if (evento === "progreso") {
+          setProgreso(String(dato));
         } else if (evento === "texto") {
           setEstado("hablando");
+          setProgreso("");
           // El delta llega como string JSON; se acumula en el último turno.
           setTurnos((t) => {
             const copia = [...t];
@@ -181,6 +188,7 @@ export default function ChatIntereses() {
       setTurnos((t) => (t[t.length - 1]?.texto === "" ? t.slice(0, -1) : t));
     } finally {
       setEstado("reposo");
+      setProgreso("");
     }
   }
 
@@ -285,7 +293,12 @@ export default function ChatIntereses() {
                     {t.texto ? (
                       <Markdown>{t.texto}</Markdown>
                     ) : (
-                      <p className="mono text-xs text-[var(--muted)]">buscando…</p>
+                      <p className="mono text-xs text-[var(--muted)]">
+                        {(i === turnos.length - 1 && progreso) || "buscando…"}
+                      </p>
+                    )}
+                    {t.texto && i === turnos.length - 1 && ocupado && progreso && (
+                      <p className="mono text-xs text-[var(--muted)]">{progreso}</p>
                     )}
                     {!!t.barrios?.length && <TablaBarrios filas={t.barrios} />}
                     {!!t.inmuebles?.length && (
