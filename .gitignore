@@ -28,3 +28,4 @@ scrapers/*.csv
 .env*
 !.env.example
 scrapers/*.db-journal
+supabase/.temp/
