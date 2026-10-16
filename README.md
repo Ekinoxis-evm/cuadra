@@ -68,9 +68,19 @@ curl -X POST "$SUPABASE_URL/rest/v1/rpc/refrescar_barrio_stats" \
   se fuerza. Se usa la página renderizada (20 por búsqueda): por comuna, y por
   barrio en las comunas que pasan de 20. Cubre ~87% del inventario.
 
-Los barrios se unifican entre portales sin importar mayúsculas ni tildes
-(`barrio_canon`), y `barrio_stats` cuenta una sola vez el aviso que aparece en
-varios portales (migración 011). `close_stale` solo cierra avisos de las
+**Barrios oficiales.** Cada portal escribe el barrio a su manera ("Ciudad
+Jardín", "Urbanización Ciudad Jardín", "Cali"). La referencia son los 342
+barrios de la Alcaldía (capa IDESC, con comuna y polígono), que carga
+`cargar_barrios.py` junto con los sectores de la zona de expansión que no
+están en esa capa (Bochalema, Ciudad Pacífica, Kachipay…) y una tabla de
+alias. Se corre una vez, y de nuevo si la Alcaldía actualiza la capa.
+`refrescar_barrio_stats` asigna cada aviso antes de calcular las medianas:
+por nombre, si no por el polígono que contiene el punto (ignorando los puntos
+genéricos que los portales comparten entre avisos de barrios distintos). Lo
+que escribió el portal queda en `barrio_portal`. Migración 012.
+
+`barrio_stats` cuenta una sola vez el aviso que aparece en varios portales
+(migración 011). `close_stale` solo cierra avisos de las
 fuentes que esa corrida sí raspó: un portal que cambia su HTML no se lleva la
 vitrina por delante.
 

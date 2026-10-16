@@ -201,16 +201,22 @@ function paraModelo(l: Listing) {
 }
 
 /**
- * Filtro de barrios sin importar mayúsculas. La base guarda "Valle Del Lili"
- * tal como lo escribe el portal, el modelo pide "Valle del Lili", y con un
- * `in` exacto eso daba cero resultados: el agente gastaba dos o tres vueltas
- * adivinando la capitalización. `ilike` sin comodines es igualdad sin
- * mayúsculas; se quitan `%` y `_` para que un nombre no se vuelva patrón, y
- * las comillas para no romper la sintaxis de `or` de PostgREST.
+ * Filtro de barrios. Lo que pide el modelo ("ciudad jardin", "Valle del
+ * Lili", "San Fernando") pasa primero por `resolver_barrios`, que lo lleva a
+ * los nombres oficiales de la Alcaldía que hay en `barrio` (sin tildes,
+ * alias, y "San Fernando" → Viejo y Nuevo). Antes de eso el agente gastaba
+ * dos o tres vueltas adivinando cómo escribió el portal cada barrio.
+ *
+ * Después, `ilike` sin comodines es igualdad sin mayúsculas, por lo que no
+ * resolvió; se quitan `%` y `_` para que un nombre no se vuelva patrón, y las
+ * comillas para no romper la sintaxis de `or` de PostgREST.
  */
-function filtroBarrios(barrios: string[]): string {
-  return barrios
-    .map((b) => String(b).replace(/["\\%_]/g, "").trim())
+async function filtroBarrios(db: SupabaseClient, barrios: string[]): Promise<string> {
+  const pedidos = barrios.map((b) => String(b).trim()).filter(Boolean);
+  const { data } = await db.rpc("resolver_barrios", { nombres: pedidos });
+  const nombres = Array.isArray(data) && data.length ? (data as string[]) : pedidos;
+  return nombres
+    .map((b) => b.replace(/["\\%_]/g, "").trim())
     .filter(Boolean)
     .map((b) => `barrio.ilike."${b}"`)
     .join(",");
@@ -232,7 +238,7 @@ export async function buscarInmuebles(
 
   if (input.operacion) q = q.eq("operacion", input.operacion as string);
   if (Array.isArray(input.barrios) && input.barrios.length)
-    q = q.or(filtroBarrios(input.barrios as string[]));
+    q = q.or(await filtroBarrios(db, input.barrios as string[]));
   if (input.precio_min) q = q.gte("price_cop", input.precio_min as number);
   if (input.precio_max) q = q.lte("price_cop", input.precio_max as number);
   if (input.habs_min) q = q.gte("habs", input.habs_min as number);
@@ -286,7 +292,7 @@ export async function estadisticasBarrio(
     .select("*")
     .eq("operacion", (input.operacion as string) ?? "arriendo");
   if (Array.isArray(input.barrios) && input.barrios.length)
-    q = q.or(filtroBarrios(input.barrios as string[]));
+    q = q.or(await filtroBarrios(db, input.barrios as string[]));
 
   const { data, error } = await q.order("n", { ascending: false }).limit(25);
   if (error)
