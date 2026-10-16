@@ -4,7 +4,7 @@ Stack: Python scrapers (laptop) → Supabase → Next.js 15 + Privy → Vercel.
 
 ## Arquitectura
 ```
-[Fincaraíz + MeLi] --curl_cffi--> SQLite (laptop)
+[Fincaraíz + Metrocuadrado + Ciencuadras] --curl_cffi--> SQLite
                                    │  sync_supabase.py
                                    ▼
                               Supabase (listings, barrio_stats, profiles, favoritos)
@@ -42,7 +42,7 @@ set -a && . ../web/.env.local && set +a
 export SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL"
 
 .venv/bin/python pull_supabase.py                        # siembra el .db
-.venv/bin/python cali_inmuebles.py scrape --skip-meli    # arriendo + venta
+.venv/bin/python cali_inmuebles.py scrape                # 3 portales, arriendo + venta
 .venv/bin/python cali_inmuebles.py enrich                # detalle, reanudable
 .venv/bin/python sync_supabase.py                        # sube
 ```
@@ -59,9 +59,23 @@ curl -X POST "$SUPABASE_URL/rest/v1/rpc/refrescar_barrio_stats" \
   -H "Content-Type: application/json" -d '{}'
 ```
 
+**Fuentes.** `--fuentes` elige cuáles (por defecto las tres que responden):
+- **Fincaraíz**: listado + un fetch de detalle por aviso (`enrich`).
+- **Metrocuadrado**: la búsqueda ya trae coordenadas, estrato y galería; pagina
+  por su API con la llave pública que viene en la propia página, leída en cada
+  corrida.
+- **Ciencuadras**: su paginación exige token y pasa por Cloudflare, y eso no
+  se fuerza. Se usa la página renderizada (20 por búsqueda): por comuna, y por
+  barrio en las comunas que pasan de 20. Cubre ~87% del inventario.
+
+Los barrios se unifican entre portales sin importar mayúsculas ni tildes
+(`barrio_canon`), y `barrio_stats` cuenta una sola vez el aviso que aparece en
+varios portales (migración 011). `close_stale` solo cierra avisos de las
+fuentes que esa corrida sí raspó: un portal que cambia su HTML no se lleva la
+vitrina por delante.
+
 > **MercadoLibre está fuera de servicio como fuente.** `api.mercadolibre.com/sites/MCO/search`
-> responde **403**: ya exige OAuth para búsquedas anónimas. Por eso `--skip-meli`.
-> Hoy el 100% de los datos viene de Fincaraíz, que es un punto único de falla.
+> responde **403**: ya exige OAuth para búsquedas anónimas.
 
 ### 3 · Privy (3 min)
 dashboard.privy.io → nueva app → habilita email + wallet + Google.
@@ -197,6 +211,7 @@ Lo siguiente, en orden de lo que desbloquea más:
 
 Más adelante:
 - [ ] OAuth de MercadoLibre para reactivar esa fuente (hoy 403)
+- [ ] Ciencuadras completo: hoy ~87% por las búsquedas renderizadas
 - [ ] Limpiar `title` en `fr_parse_page`: guarda el texto crudo del ancla y repite
       el precio dentro del título
 - [ ] Fetchers Metrocuadrado (Algolia) + Ciencuadras (trae comuna en la data)

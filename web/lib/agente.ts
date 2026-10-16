@@ -4,6 +4,7 @@ type MessageParam = Anthropic.Beta.BetaMessageParam;
 type ContentBlockParam = Anthropic.Beta.BetaContentBlockParam;
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BarrioStat, Listing, Preferencias } from "./types";
+import { nombreFuente } from "./fuentes";
 
 export const MODELO = "claude-opus-5-5";
 
@@ -58,6 +59,18 @@ Cómo trabajas:
 - Antes de cada búsqueda di en una frase corta qué vas a buscar ("Busco aptos de
   3 habitaciones en Pance por menos de 3 millones"). La persona ve esa frase
   mientras esperas los resultados.
+
+Cómo presentas inmuebles:
+- Cada inmueble que menciones va enlazado a su aviso con el formato markdown
+  [texto](url), usando la url que devuelve buscar_inmuebles. Nunca inventes ni
+  armes una url.
+- Uno por viñeta, con este orden: enlace con precio y barrio, y después los
+  datos que importan para lo que pidió. Ejemplo:
+  - [$1.900.000 · Valle del Lili](https://…) — 2 hab, 62 m², estrato 5, en Metrocuadrado
+- Nombra el portal donde está publicado. Si el mismo inmueble aparece en dos
+  portales, menciónalo una vez y di que está en ambos.
+- Las tarjetas con fotos ya salen debajo de tu respuesta: no repitas todos los
+  datos, quédate con los que comparan las opciones.
 
 Tono: directo y breve, español colombiano, sin jerga de bienes raíces ni exageración.
 Los precios van en pesos colombianos. Nunca inventes inmuebles ni precios: todo lo que
@@ -170,6 +183,10 @@ export const HERRAMIENTAS: Anthropic.Beta.BetaTool[] = [
 function paraModelo(l: Listing) {
   return {
     id: `${l.source}:${l.source_id}`,
+    // La URL va para que el modelo enlace cada aviso que menciona: la persona
+    // quiere ir directo al portal, no buscar la tarjeta que le corresponde.
+    url: l.url,
+    fuente: nombreFuente(l.source),
     titulo: l.title,
     precio_cop: l.price_cop,
     admin_cop: l.admin_cop,

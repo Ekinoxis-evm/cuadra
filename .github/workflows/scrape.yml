@@ -1,4 +1,4 @@
-# Scrape diario de Fincaraíz y sync a Supabase.
+# Scrape diario de Fincaraíz, Metrocuadrado y Ciencuadras, y sync a Supabase.
 #
 # El orden importa y no es negociable: pull ANTES de scrape.
 #
@@ -61,9 +61,15 @@ jobs:
 
       - name: Scrape
         working-directory: scrapers
-        # MercadoLibre exige OAuth desde 2025 y responde 403; --skip-meli
-        # hasta que se registre la app.
-        run: python cali_inmuebles.py scrape --skip-meli --pages ${{ inputs.paginas || '20' }}
+        # Las tres fuentes que responden. MercadoLibre exige OAuth desde 2025
+        # y responde 403: queda fuera hasta que se registre la app.
+        # El input pasa por env y se valida como número: interpolarlo
+        # directo en el script deja que el texto del input se ejecute.
+        env:
+          PAGINAS: ${{ inputs.paginas || '20' }}
+        run: |
+          case "$PAGINAS" in ''|*[!0-9]*) echo "paginas debe ser un número"; exit 1;; esac
+          python cali_inmuebles.py scrape --fuentes fincaraiz,metrocuadrado,ciencuadras --pages "$PAGINAS"
 
       - name: Enriquecer los nuevos
         working-directory: scrapers

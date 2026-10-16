@@ -5,14 +5,28 @@ import { fmtCOP, type Listing } from "@/lib/types";
 import FuenteBadge from "./FuenteBadge";
 
 export default function ListingCard({
-  l, onFav, faved,
-}: { l: Listing; onFav?: () => void; faved?: boolean }) {
+  l, onFav, faved, activo, onHover,
+}: {
+  l: Listing;
+  onFav?: () => void;
+  faved?: boolean;
+  /** Resaltada porque su pin está activo en el mapa. */
+  activo?: boolean;
+  /** Avisa al mapa qué pin resaltar mientras el mouse está encima. */
+  onHover?: (encima: boolean) => void;
+}) {
   const [sinFoto, setSinFoto] = useState(false);
   const portada = l.imagen ?? l.imagenes?.[0] ?? null;
   const nFotos = l.imagenes?.length ?? 0;
 
   return (
-    <article className="border rule flex flex-col hover:bg-[var(--petrol-2)]">
+    <article
+      onMouseEnter={onHover && (() => onHover(true))}
+      onMouseLeave={onHover && (() => onHover(false))}
+      className={`border flex flex-col hover:bg-[var(--petrol-2)] ${
+        activo ? "border-[var(--solar)]" : "rule"
+      }`}
+    >
       {portada && !sinFoto && (
         <div className="relative aspect-[4/3] overflow-hidden bg-[var(--petrol-2)]">
           {/* next/image y no <img>: los originales pesan ~2,5 MB y el CDN de

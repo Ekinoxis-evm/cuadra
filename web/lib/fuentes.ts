@@ -57,19 +57,19 @@ export const CATALOGO_FUENTES: {
     id: "meli",
     nombre: "Mercado Libre",
     sitio: "https://www.mercadolibre.com.co/inmuebles",
-    nota: "Clasificados de inmuebles. Integración pendiente.",
+    nota: "Clasificados de inmuebles. Su API exige OAuth desde 2025; pendiente registrar la app.",
   },
   {
     id: "metrocuadrado",
     nombre: "Metrocuadrado",
     sitio: "https://www.metrocuadrado.com",
-    nota: "Portal de El Tiempo. Integración pendiente.",
+    nota: "Trae coordenadas, estrato y galería completa desde la búsqueda.",
   },
   {
     id: "ciencuadras",
     nombre: "Ciencuadras",
     sitio: "https://www.ciencuadras.com",
-    nota: "Portal de Colpatria, trae comuna en la data. Integración pendiente.",
+    nota: "Trae comuna, dirección y coordenadas de cada aviso.",
   },
 ];
 

@@ -3,6 +3,7 @@ import { fmtCOP } from "@/lib/types";
 import type { Filtros } from "@/lib/filtros";
 import { AMENIDADES_COMUNES, TIPOS, ESTRATOS } from "@/lib/filtros";
 import { nombreFuente } from "@/lib/fuentes";
+import { useState } from "react";
 
 /** Grupo de botones tipo "cualquiera / 1+ / 2+ / 3+". */
 function Minimos({
@@ -44,8 +45,53 @@ function Minimos({
   );
 }
 
+/** Elegir barrios escribiendo: con 300 barrios, una lista de botones no cabe. */
+function Barrios({
+  elegidos, disponibles, onChange,
+}: { elegidos: string[]; disponibles: string[]; onChange: (b: string[]) => void }) {
+  const [texto, setTexto] = useState("");
+  const agregar = (b: string) => {
+    const real = disponibles.find((d) => d.toLowerCase() === b.trim().toLowerCase());
+    if (real && !elegidos.includes(real)) onChange([...elegidos, real]);
+    setTexto("");
+  };
+  return (
+    <div>
+      <p className="mono text-[10px] text-[var(--muted)] mb-1.5">BARRIOS</p>
+      <input
+        value={texto}
+        list="barrios-disponibles"
+        onChange={(e) => {
+          setTexto(e.target.value);
+          // Elegir de la lista del datalist llega como cambio con el nombre exacto.
+          if (disponibles.includes(e.target.value)) agregar(e.target.value);
+        }}
+        onKeyDown={(e) => { if (e.key === "Enter") agregar(texto); }}
+        placeholder="Escribe un barrio…"
+        className="mono text-xs bg-transparent border rule px-3 py-2 w-full placeholder:text-[var(--muted)] focus:outline-none focus:border-[var(--solar)]"
+      />
+      <datalist id="barrios-disponibles">
+        {disponibles.map((b) => <option key={b} value={b} />)}
+      </datalist>
+      {elegidos.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2">
+          {elegidos.map((b) => (
+            <button
+              key={b}
+              onClick={() => onChange(elegidos.filter((x) => x !== b))}
+              className="mono text-[11px] border rule px-2 py-1 bg-[var(--solar)] text-[var(--petrol)] font-semibold"
+            >
+              {b} ✕
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PanelFiltros({
-  filtros, setFiltros, limites, nResultados, onLimpiar, fuentes,
+  filtros, setFiltros, limites, nResultados, onLimpiar, fuentes, barrios = [],
 }: {
   filtros: Filtros;
   setFiltros: (f: Partial<Filtros>) => void;
@@ -56,6 +102,8 @@ export default function PanelFiltros({
   /** Fuentes presentes en la base, con su conteo. Sale de los datos, no de una
    *  lista fija: una fuente nueva aparece aquí sola tras el primer sync. */
   fuentes: { source: string; n: number }[];
+  /** Barrios con inventario en la operación actual, para autocompletar. */
+  barrios?: string[];
 }) {
   const precioMin = filtros.precioMin ?? limites.min;
   const precioMax = filtros.precioMax ?? limites.max;
@@ -80,7 +128,7 @@ export default function PanelFiltros({
     (filtros.texto ? 1 : 0);
 
   return (
-    <div className="space-y-5 border rule p-4">
+    <div className="space-y-5 p-4">
       <div className="flex items-center justify-between gap-3">
         <p className="mono text-[11px] text-[var(--muted)]">
           {nResultados} resultado{nResultados === 1 ? "" : "s"}
@@ -98,6 +146,12 @@ export default function PanelFiltros({
         onChange={(e) => setFiltros({ texto: e.target.value })}
         placeholder="Buscar: amoblado, remodelado, vista…"
         className="mono text-xs bg-transparent border rule px-3 py-2 w-full placeholder:text-[var(--muted)] focus:outline-none focus:border-[var(--solar)]"
+      />
+
+      <Barrios
+        elegidos={filtros.barrios}
+        disponibles={barrios}
+        onChange={(b) => setFiltros({ barrios: b })}
       />
 
       {/* ---- precio: dos sliders superpuestos ---- */}

@@ -9,6 +9,10 @@ export default {
     remotePatterns: [
       { protocol: "https", hostname: "**.infocasas.com.uy" },
       { protocol: "https", hostname: "s3.amazonaws.com" },
+      // Metrocuadrado sirve la galería desde su propio CDN.
+      { protocol: "https", hostname: "multimedia.metrocuadrado.com" },
+      // Ciencuadras usa un bucket con host propio dentro de S3.
+      { protocol: "https", hostname: "*.s3.amazonaws.com" },
       // Fotos de proyectos: bucket público de Supabase.
       { protocol: "https", hostname: "*.supabase.co" },
     ],

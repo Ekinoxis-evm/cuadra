@@ -44,7 +44,7 @@ export default function Nav({
         {acciones}
       </div>
 
-      <nav className="max-w-5xl mx-auto px-4 flex gap-1 overflow-x-auto">
+      <nav className="max-w-5xl mx-auto px-4 flex gap-1 overflow-x-auto sin-barra">
         {ITEMS.map((it) => {
           const activo = esActivo(it.href);
           return (

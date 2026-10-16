@@ -11,7 +11,7 @@ Uso:
     python cali_inmuebles.py report                     # medianas por barrio x operación
 """
 
-import argparse, csv, json, re, sqlite3, sys, time
+import argparse, csv, json, re, sqlite3, sys, time, unicodedata
 from datetime import datetime, timezone
 from statistics import median
 
@@ -36,6 +36,11 @@ DETAIL_COLS = [
     ("owner_nombre", "TEXT"), ("owner_tipo", "TEXT"), ("imagen", "TEXT"),
     ("imagenes", "TEXT"), ("detail_at", "TEXT"),
 ]
+
+# Lo que upsert_detalle y enrich pueden escribir: las de detalle más las del
+# listado que el detalle corrige (título limpio, área estructurada, etc.).
+COLUMNAS_DETALLE = {c for c, _ in DETAIL_COLS} | {
+    "title", "habs", "banos", "area_m2", "admin_cop", "zona"}
 
 # Mercado Libre: MCO1459 = Inmuebles. Filtramos operación por atributo en cada resultado.
 MELI_URL = ("https://api.mercadolibre.com/sites/MCO/search"
@@ -68,18 +73,82 @@ def db():
 
 def upsert(conn, row):
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    # Columnas con nombre: el INSERT posicional dejo de funcionar cuando
+    # DETAIL_COLS agrego 17 columnas ("table has 33 columns but 16 values").
     conn.execute("""
-        INSERT INTO listings VALUES
+        INSERT INTO listings
+            (source,source_id,operacion,tipo,url,title,price_cop,admin_cop,
+             barrio,zona,habs,banos,area_m2,first_seen,last_seen,active)
+        VALUES
             (:source,:source_id,:operacion,:tipo,:url,:title,:price_cop,:admin_cop,
              :barrio,:zona,:habs,:banos,:area_m2,:now,:now,1)
         ON CONFLICT(source,source_id) DO UPDATE SET
             price_cop=excluded.price_cop, last_seen=excluded.last_seen, active=1
-        """, {**row, "now": now})
+        """, {**row, "barrio": barrio_canon(row.get("barrio")), "now": now})
 
 
-def close_stale(conn):
+def upsert_detalle(conn, source, source_id, det):
+    """Escribe lo que en Fincaraíz sale del fetch de detalle y en los otros
+    portales ya viene en la búsqueda. Marca detail_at para que enrich() no
+    los vuelva a pedir."""
+    det = {k: v for k, v in det.items() if v not in (None, "", [])}
+    for col in ("amenidades", "imagenes"):
+        if isinstance(det.get(col), list):
+            det[col] = json.dumps(det[col], ensure_ascii=False)
+    det["detail_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    # Los nombres de columna van en el SQL; solo pasan los que conocemos.
+    raras = set(det) - COLUMNAS_DETALLE
+    if raras:
+        raise ValueError(f"columnas desconocidas: {sorted(raras)}")
+    sets = ", ".join(f"{k}=?" for k in det)
+    conn.execute(f"UPDATE listings SET {sets} WHERE source=? AND source_id=?",
+                 list(det.values()) + [source, source_id])
+
+
+# ---------------------------------------------------------------- barrios
+
+def _clave(nombre):
+    """Llave para comparar barrios entre portales: sin tildes, sin
+    mayúsculas, espacios colapsados. "VALLE DEL LILI", "Valle del Lili" y
+    "Valle Del Lilí" son el mismo barrio."""
+    s = unicodedata.normalize("NFKD", str(nombre))
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return " ".join(s.lower().split())
+
+
+_CANON = {}
+
+
+def cargar_barrios(conn):
+    """Siembra el mapa de nombres con lo que ya hay, Fincaraíz primero.
+
+    Sin esto cada portal escribe el barrio a su manera y barrio_stats parte
+    un mismo barrio en dos filas, y el chat, que filtra por nombre, se pierde
+    la mitad de los avisos."""
+    for (b,) in conn.execute(
+            "SELECT barrio FROM listings WHERE barrio IS NOT NULL "
+            "ORDER BY source='fincaraiz' DESC, first_seen"):
+        _CANON.setdefault(_clave(b), b)
+
+
+def barrio_canon(nombre):
+    if not nombre or not str(nombre).strip():
+        return None
+    n = " ".join(str(nombre).split()).title()
+    return _CANON.setdefault(_clave(n), n)
+
+
+def close_stale(conn, fuentes):
+    """Cierra lo que no se ha visto en una semana, pero solo de las fuentes
+    que esta corrida sí raspó con éxito. Si un portal cambia su HTML y
+    devuelve cero, sus avisos no se dan por vendidos: se quedan como estaban
+    y el aviso en la salida dice qué revisar."""
+    if not fuentes:
+        return
+    marcas = ",".join("?" * len(fuentes))
     conn.execute("UPDATE listings SET active=0 "
-                 "WHERE julianday('now')-julianday(last_seen) > 7")
+                 "WHERE julianday('now')-julianday(last_seen) > 7 "
+                 f"AND source IN ({marcas})", list(fuentes))
 
 
 # ---------------------------------------------------------------- fincaraíz
@@ -207,6 +276,7 @@ def scrape_fincaraiz(conn, operacion, tipo, pages):
         conn.commit()
         time.sleep(DELAY)
     print(f"[fincaraiz] {operacion}/{tipo}: {total} listings")
+    return total
 
 
 # ---------------------------------------------------------------- mercado libre
@@ -258,6 +328,297 @@ def scrape_meli(conn, operacion, tipo, max_pages=20):
         offset += 50
         time.sleep(0.5)
     print(f"[meli] {operacion}/{tipo}: {total} listings")
+    return total
+
+
+# ---------------------------------------------------------------- comunes
+
+def _num(v):
+    try:
+        f = float(str(v).replace(",", "."))
+        return f if f > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _entero(v):
+    f = _num(v)
+    return int(f) if f is not None else None
+
+
+def _coord(v):
+    """Coordenada: puede ser negativa (en Cali la longitud es -76,5), así que
+    no sirve _num. Fuera de un rango plausible para Cali se descarta."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if f and -80 < f < 13 else None
+
+
+def _precio_ok(operacion, precio):
+    lo, hi = SANITY[operacion]
+    return precio is not None and lo <= precio <= hi
+
+
+# ---------------------------------------------------------------- metrocuadrado
+#
+# La página de búsqueda trae la primera tanda en el HTML; el resto lo pide el
+# navegador a /rest-search/search con una llave pública que viene en la
+# configuración de la misma página. Se lee de ahí en cada corrida en vez de
+# fijarla en el código: si la rotan, el scraper la toma sola. La búsqueda
+# trae todo lo que en Fincaraíz exige un fetch de detalle (coordenadas,
+# estrato, descripción, galería), así que no hace falta enriquecer.
+
+MC_BASE = "https://www.metrocuadrado.com"
+MC_TIPO = {"apartamentos": "apartamento", "casas": "casa"}
+MC_PAGINA = 50     # la API rechaza otro tamaño: con size=5 devuelve 0 resultados
+
+# Lo que Metrocuadrado marca con "S" en `featured`, con el nombre que usa
+# Fincaraíz: el filtro de amenidades del chat compara por nombre exacto.
+MC_AMENIDADES = {
+    "conPiscina": "Piscina", "conGimnasio": "Gimnasio", "ascensor": "Ascensor",
+    "enConjuntoCerrado": "En conjunto cerrado", "conSalonComunal": "Salón Comunal",
+    "conZonaNinos": "Zona Infantil", "conZonasVerdes": "Zonas Verdes",
+    "conZonaLavanderia": "Zona de lavandería",
+    "cercaTransportePublico": "Trans. Público cercano",
+    "cercaColegioUniversidad": "Colegios / Universidades",
+    "conMuebles": "Amoblado", "sePermitenMascotas": "Mascotas permitidas",
+}
+
+
+def mc_llave():
+    html = creq.get(f"{MC_BASE}/apartamentos/arriendo/cali/",
+                    impersonate="chrome", timeout=30).text
+    # El payload de Next viene escapado dentro de strings de JS.
+    m = re.search(r'\\?"apiKey\\?":\\?"([A-Za-z0-9]+)', html)
+    if not m:
+        raise RuntimeError("no se encontró la llave de búsqueda en la página")
+    return m.group(1)
+
+
+def _mc_featured(x):
+    out = {}
+    for f in x.get("featured") or []:
+        k, _, v = str(f).strip().partition(":")
+        out[k] = v.strip()
+    return out
+
+
+def _mc_row(x, operacion, tipo):
+    precio = _entero(x.get("mvalorarriendo") if operacion == "arriendo"
+                     else x.get("mvalorventa"))
+    if not _precio_ok(operacion, precio):
+        return None, None
+    if (x.get("mciudad") or {}).get("nombre", "").lower() != "cali":
+        return None, None
+    sid = x.get("midinmueble")
+    if not sid:
+        return None, None
+
+    feat = _mc_featured(x)
+    zona = (x.get("mzona") or {}).get("nombre")
+    row = {
+        "source": "metrocuadrado", "source_id": str(sid),
+        "operacion": operacion, "tipo": tipo,
+        "url": MC_BASE + str(x.get("link") or ""),
+        "title": (x.get("title") or "")[:120],
+        "price_cop": precio,
+        "admin_cop": _entero((x.get("data") or {}).get("mvaloradministracion")),
+        "barrio": x.get("mnombrecomunbarrio") or x.get("mbarrio"),
+        "zona": None if zona in (None, "Otros") else zona,
+        "habs": _entero(x.get("mnrocuartos")),
+        "banos": _entero(x.get("mnrobanos")),
+        "area_m2": _num(x.get("marea")) or _num(x.get("mareac")),
+    }
+
+    loc = x.get("localizacion") or {}
+    fotos = [f"https://multimedia.metrocuadrado.com/{sid}/{f}_p.jpg"
+             for f in (x.get("mgaleriainmueble") or [])]
+    amen = [n for k, n in MC_AMENIDADES.items() if feat.get(k) == "S"]
+    if feat.get("terrazaBalcon") in ("Balcón", "Terraza"):
+        amen.append(feat["terrazaBalcon"])
+    det = {
+        "lat": _coord(loc.get("lat")), "lng": _coord(loc.get("lon")),
+        "estrato": _entero(x.get("estrato")),
+        "descripcion": x.get("comment"),
+        "amenidades": amen,
+        "parqueaderos": _entero(x.get("mnrogarajes")),
+        "piso": _entero(feat.get("nroPiso")),
+        "antiguedad": feat.get("tiempoConstruido"),
+        "estado": x.get("mestadoinmueble"),
+        # Sin nombre ni teléfono de quien publica: puede ser una persona.
+        "owner_tipo": x.get("moferente"),
+        "imagen": x.get("imageLink") or (fotos[0] if fotos else None),
+        "imagenes": fotos,
+    }
+    return row, det
+
+
+def scrape_metrocuadrado(conn, operacion, tipo, pages, llave):
+    t = MC_TIPO[tipo]
+    headers = {"x-api-key": llave,
+               "referer": f"{MC_BASE}/{tipo}/{operacion}/cali/"}
+    total = 0
+    for p in range(pages):
+        url = (f"{MC_BASE}/rest-search/search?realEstateTypeList={t}"
+               f"&realEstateBusinessList={operacion}&city=cali"
+               f"&from={p * MC_PAGINA}&size={MC_PAGINA}")
+        try:
+            r = creq.get(url, impersonate="chrome", headers=headers, timeout=30)
+            r.raise_for_status()
+            data = r.json()
+        except Exception as e:
+            print(f"  [metrocuadrado {operacion}/{tipo}] pág {p + 1} falló: {e}",
+                  file=sys.stderr)
+            break
+        resultados = data.get("results") or []
+        if not resultados:
+            break
+        for x in resultados:
+            row, det = _mc_row(x, operacion, tipo)
+            if row:
+                upsert(conn, row)
+                upsert_detalle(conn, row["source"], row["source_id"], det)
+                total += 1
+        conn.commit()
+        if (p + 1) * MC_PAGINA >= (data.get("totalHits") or 0):
+            break
+        time.sleep(DELAY)
+    print(f"[metrocuadrado] {operacion}/{tipo}: {total} listings")
+    return total
+
+
+# ---------------------------------------------------------------- ciencuadras
+#
+# Ciencuadras pagina con una API que exige token y pasa por el reto de
+# Cloudflare. Eso no se fuerza. Lo que sí sirve es la página renderizada en el
+# servidor: trae 20 avisos y el total de la búsqueda. Una búsqueda por comuna
+# (22) cubre completas las que tienen 20 o menos; en las que pasan de 20, se
+# baja a búsquedas por barrio, que en Cali casi nunca pasan de 20.
+
+CC_BASE = "https://www.ciencuadras.com"
+CC_TIPO = {"apartamentos": "apartamento", "casas": "casa"}
+CC_POR_PAGINA = 20
+
+
+def _slug(nombre):
+    return re.sub(r"[^a-z0-9]+", "-", _clave(nombre)).strip("-")
+
+
+def cc_buscar(path):
+    """Resultados de la página server-side, o None si no hay estado."""
+    html = creq.get(CC_BASE + path, impersonate="chrome", timeout=30).text
+    m = re.search(r'<script id="result-state" type="application/json">(.*?)</script>',
+                  html, re.S)
+    if not m:
+        return None
+    raw = m.group(1)
+    # Angular escapa el TransferState con entidades propias.
+    for a, b in (("&q;", '"'), ("&s;", "'"), ("&l;", "<"), ("&g;", ">"), ("&a;", "&")):
+        raw = raw.replace(a, b)
+    estado = json.loads(raw)
+    clave = next((k for k in estado if k.startswith("results-")), None)
+    return (estado[clave] or {}).get("data") if clave else None
+
+
+def _cc_row(x, operacion, tipo):
+    # Un barrio sin casas no devuelve vacío: Ciencuadras amplía la búsqueda y
+    # mezcla locales, oficinas y apartamentos. Solo entra lo que calza.
+    if _clave(x.get("realEstateType", "")) != CC_TIPO[tipo]:
+        return None, None
+    if operacion not in _clave(x.get("offerType", "")):
+        return None, None
+    precio = _entero(x.get("rentPrice") if operacion == "arriendo" else x.get("salePrice"))
+    if not _precio_ok(operacion, precio) or str(x.get("city", "")).lower() != "cali":
+        return None, None
+    coords = x.get("coordinates") or {}
+    amen = [n for k, n in (("gym", "Gimnasio"), ("communalPool", "Piscina"),
+                           ("privatePool", "Piscina privada")) if str(x.get(k)) == "1"]
+    barrio = x.get("neighborhood") or x.get("neighborhood_integrator")
+    row = {
+        "source": "ciencuadras", "source_id": str(x["id"]),
+        "operacion": operacion, "tipo": tipo,
+        "url": CC_BASE + str(x.get("url") or ""),
+        "title": f"{x.get('realEstateType', '')} en {operacion} en {barrio}, Cali"[:120],
+        "price_cop": precio,
+        "admin_cop": _entero(x.get("adminValue")),
+        "barrio": barrio, "zona": None,
+        "habs": _entero(x.get("rooms")), "banos": _entero(x.get("baths")),
+        "area_m2": _num(x.get("area")) or _num(x.get("privateArea")),
+    }
+    det = {
+        "lat": _coord(coords.get("latitude")), "lng": _coord(coords.get("longitude")),
+        "estrato": _entero(x.get("stratum")),
+        "comuna": x.get("locality"),
+        "direccion": x.get("address"),
+        "amenidades": amen,
+        "parqueaderos": _entero(x.get("garages")),
+        "antiguedad": x.get("antiquity"),
+        "publicado": x.get("createdAt"),
+        "owner_tipo": x.get("userType"),
+        "imagen": x.get("image"),
+        "imagenes": [x["image"]] if x.get("image") else None,
+    }
+    return row, det
+
+
+def scrape_ciencuadras(conn, operacion, tipo):
+    base = f"/{operacion}/{CC_TIPO[tipo]}/cali"
+    vistos, barrios_truncados = set(), set()
+
+    def guardar(data):
+        for x in (data or {}).get("results") or []:
+            row, det = _cc_row(x, operacion, tipo)
+            if row and row["source_id"] not in vistos:
+                vistos.add(row["source_id"])
+                upsert(conn, row)
+                upsert_detalle(conn, row["source"], row["source_id"], det)
+        conn.commit()
+
+    def pedir(path):
+        try:
+            return cc_buscar(path)
+        except Exception as e:
+            print(f"  [ciencuadras] {path} falló: {e}", file=sys.stderr)
+            return None
+        finally:
+            time.sleep(DELAY)
+
+    general = pedir(base)
+    if not general:
+        print(f"[ciencuadras] {operacion}/{tipo}: sin respuesta")
+        return 0
+    guardar(general)
+    esperado = general.get("total") or 0
+
+    truncadas = []
+    if esperado > CC_POR_PAGINA:
+        for n in range(1, 23):
+            data = pedir(f"{base}/comuna-{n}")
+            guardar(data)
+            if data and (data.get("total") or 0) > CC_POR_PAGINA:
+                truncadas.append(f"Comuna {n}")
+                barrios_truncados.update(
+                    x.get("neighborhood") for x in data.get("results") or []
+                    if x.get("neighborhood"))
+
+    # Barrios a revisar: los que se vieron en comunas truncadas, más los que
+    # ya conocemos de esas comunas por los otros portales.
+    if truncadas:
+        marcas = ",".join("?" * len(truncadas))
+        barrios_truncados.update(b for (b,) in conn.execute(
+            f"SELECT DISTINCT barrio FROM listings WHERE comuna IN ({marcas}) "
+            f"AND barrio IS NOT NULL", truncadas))
+        for slug in sorted({_slug(b) for b in barrios_truncados if b}):
+            data = pedir(f"{base}/{slug}")
+            # Un barrio que el portal no reconoce devuelve la búsqueda de toda
+            # la ciudad: mismo total, nada nuevo.
+            if data and (data.get("total") or 0) < esperado:
+                guardar(data)
+
+    print(f"[ciencuadras] {operacion}/{tipo}: {len(vistos)} de {esperado} listings")
+    return len(vistos)
 
 
 # ---------------------------------------------------------------- detalle
@@ -412,7 +773,10 @@ if __name__ == "__main__":
     ap.add_argument("--tipo", default="apartamentos,casas",
                     help="coma-separado: apartamentos,casas")
     ap.add_argument("--pages", type=int, default=20)
-    ap.add_argument("--skip-meli", action="store_true")
+    ap.add_argument("--fuentes", default="fincaraiz,metrocuadrado,ciencuadras",
+                    help="coma-separado: fincaraiz,metrocuadrado,ciencuadras,meli")
+    ap.add_argument("--skip-meli", action="store_true",
+                    help="obsoleto: meli ya no está en las fuentes por defecto (403)")
     ap.add_argument("--limit", type=int, help="enrich: solo N listings")
     ap.add_argument("--redo", action="store_true", help="enrich: rehacer los ya hechos")
     args = ap.parse_args()
@@ -421,12 +785,36 @@ if __name__ == "__main__":
     if args.cmd == "scrape":
         ops = OPS if args.op == "both" else [args.op]
         tipos = [t.strip() for t in args.tipo.split(",") if t.strip() in TIPOS]
+        fuentes = [f.strip() for f in args.fuentes.split(",") if f.strip()]
+        if args.skip_meli and "meli" in fuentes:
+            fuentes.remove("meli")
+        cargar_barrios(conn)
+
+        llave_mc = None
+        if "metrocuadrado" in fuentes:
+            try:
+                llave_mc = mc_llave()
+            except Exception as e:
+                print(f"[metrocuadrado] sin llave de búsqueda: {e}", file=sys.stderr)
+
+        vistos = {f: 0 for f in fuentes}
         for op in ops:
             for tipo in tipos:
-                scrape_fincaraiz(conn, op, tipo, args.pages)
-                if not args.skip_meli:
-                    scrape_meli(conn, op, tipo)
-        close_stale(conn)
+                if "fincaraiz" in fuentes:
+                    vistos["fincaraiz"] += scrape_fincaraiz(conn, op, tipo, args.pages)
+                if "metrocuadrado" in fuentes and llave_mc:
+                    vistos["metrocuadrado"] += scrape_metrocuadrado(
+                        conn, op, tipo, args.pages, llave_mc)
+                if "ciencuadras" in fuentes:
+                    vistos["ciencuadras"] += scrape_ciencuadras(conn, op, tipo)
+                if "meli" in fuentes:
+                    vistos["meli"] += scrape_meli(conn, op, tipo)
+
+        for f, n in vistos.items():
+            if not n:
+                print(f"AVISO: {f} devolvió 0 avisos; no se cierra nada suyo. "
+                      "Revisa si cambió el portal.", file=sys.stderr)
+        close_stale(conn, [f for f, n in vistos.items() if n])
         conn.commit()
         for op in OPS:
             n = conn.execute("SELECT COUNT(*) FROM listings WHERE active=1 "

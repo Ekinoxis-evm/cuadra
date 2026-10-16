@@ -34,3 +34,15 @@ body {
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* Barras de filtros y pestañas que se desplazan de lado en el celular: se
+   desplazan igual, pero sin la barra de scroll pintada encima. */
+.sin-barra { scrollbar-width: none; }
+.sin-barra::-webkit-scrollbar { display: none; }
+
+/* Tarjeta del mapa: el popup de MapLibre trae fondo blanco y padding; la
+   tarjeta ya tiene los suyos. */
+.popup-cuadra .maplibregl-popup-content { background: transparent; padding: 0; box-shadow: none; }
+.popup-cuadra .maplibregl-popup-tip { display: none; }
+/* Encima de los pines, que llevan z-index propio para el activo. */
+.maplibregl-popup.popup-cuadra { z-index: 20; }

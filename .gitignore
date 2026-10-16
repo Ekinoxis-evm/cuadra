@@ -27,3 +27,4 @@ scrapers/*.csv
 .vercel
 .env*
 !.env.example
+scrapers/*.db-journal
